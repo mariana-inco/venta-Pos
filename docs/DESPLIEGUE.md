@@ -2,6 +2,14 @@
 
 La API usa SQLite en un archivo y debe correr como **un solo servidor permanente con disco persistente**. Vercel no sirve para la API (disco de solo lectura y funciones efímeras: da `500 FUNCTION_INVOCATION_FAILED` y perdería las ventas). Vercel solo publica las pantallas web.
 
+## Servicio independiente
+
+Desde `server/`: `npm ci --omit=dev`, configura variables y ejecuta `npm start`. No requiere archivos de `mobile/`. El lockfile propio permite desplegar solo esta carpeta. `npm start` toma las variables del entorno del proveedor; para cargar `.env` local usa `npm run dev`.
+
+Alternativa portable: `docker build -t dannys-pos-api ./server` y ejecuta la imagen con un volumen persistente en `/data`, `HOST=0.0.0.0`, `DATABASE_PATH=/data/pos.sqlite` y el puerto expuesto. El proceso usa UID 1000 (`node`): el volumen debe ser escribible por ese usuario. El healthcheck consulta `/health`. Conserva una sola réplica por base; para múltiples réplicas del backend se necesita migrar la persistencia central. Esto no limita el número de celulares sincronizando con esa réplica.
+
+Despliega primero esta API y luego los APK con su URL HTTPS. Las tablas e índices nuevos se migran al abrir la base y conservan las ventas anteriores. Haz un respaldo consistente antes de actualizar.
+
 ## 1. API en Railway
 
 1. En Railway: **New Project → Deploy from GitHub repo** y elige este repositorio y la rama a publicar.
@@ -47,3 +55,5 @@ Con `railway ssh`, ejecuta `npm run backup`: crea una copia consistente en `/dat
 ## 4. App Android
 
 Para el APK, configura `EXPO_PUBLIC_API_URL` con la URL HTTPS de Railway antes de `eas build` (ver README).
+
+Para sincronización e impresión Android, consulta [OFFLINE.md](OFFLINE.md). No uses el disco efímero del contenedor para ventas, catálogos históricos o cola de recepción.

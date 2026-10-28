@@ -68,7 +68,7 @@ export function HistoryScreen({user, settings, run, busy, initialSale, initialCl
   // ── Detalle de venta
   if (sale) return <Page testID="sale-detail">
     <BackLink text="Historial"/>
-    <Header eyebrow="VENTA REGISTRADA" title={`Venta ${receiptNumber(sale.number)}`} subtitle={date(sale.created_at)} right={<Badge text="Guardada" icon="check"/>}/>
+    <Header eyebrow="VENTA REGISTRADA" title={`Venta ${(sale.snapshot.ticket_number || receiptNumber(sale.number))}`} subtitle={date(sale.created_at)} right={<Badge text="Guardada" icon="check"/>}/>
     <Card>
       <InfoRow label="Cliente" value={sale.snapshot.customer_name} strong/>
       <InfoRow label="Ciudad" value={sale.snapshot.customer_city}/>

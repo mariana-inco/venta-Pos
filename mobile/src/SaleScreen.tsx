@@ -89,7 +89,7 @@ export function SaleScreen({userId, active, session, products, customers, platfo
       let sale: Sale;
       try { sale = await api<Sale>('/sales', 'POST', body); }
       catch (e) {
-        if (e instanceof ApiError && e.status > 0 && e.status < 500) { await savePending(userId, null); setPending(null); if (e.status === 409) void refresh().catch(() => undefined); }
+        if (e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 401 && e.status !== 403 && e.status !== 408 && e.status !== 429) { await savePending(userId, null); setPending(null); if (e.status === 409) void refresh().catch(() => undefined); }
         throw e;
       }
       await savePending(userId, null); setPending(null);
@@ -115,6 +115,7 @@ export function SaleScreen({userId, active, session, products, customers, platfo
         <Badge text={p?.method === 'cash' ? 'Efectivo' : p?.platform_name || 'Electrónico'} tone="gray"/>
         {change !== null && change > 0 && <View style={{marginTop: 8, alignItems: 'center'}}><Text style={styles.small}>Cambio para el cliente</Text><Text style={[styles.metric, {color: colors.orange}]}>{cop(change)}</Text></View>}
       </Card>
+      {sale.sync_status==='pending' && <Banner tone="gray" text="Venta guardada en este dispositivo. Se enviará a la nube al sincronizar; ya puedes imprimir el ticket."/>}
       {sale.pdf_message && <Banner tone="orange" text={sale.pdf_message}/>}
       <View style={{gap: 10}}>
         <Button title="Nueva venta" icon="plus" size="lg" onPress={() => setDone(null)} testID="sale-new"/>

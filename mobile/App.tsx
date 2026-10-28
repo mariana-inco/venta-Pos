@@ -12,6 +12,8 @@ import {SaleScreen} from './src/SaleScreen';
 import {CatalogScreen} from './src/CatalogScreen';
 import {CashScreen} from './src/CashScreen';
 import {HistoryScreen} from './src/HistoryScreen';
+import {SyncBanner} from './src/DeviceSettings';
+import {offlineEnabled,startSync,subscribeSync} from './src/offline/runtime';
 import {SettingsScreen} from './src/SettingsScreen';
 // Cinco pestañas caben cómodas desde 320 px; Vender queda al centro, al alcance del pulgar. Perfil se abre desde el avatar.
 const tabs=[{id:'home',name:'Inicio',icon:'home'},{id:'cash',name:'Caja',icon:'inbox'},{id:'sale',name:'Vender',icon:'shopping-cart'},{id:'catalog',name:'Catálogo',icon:'package'},{id:'history',name:'Historial',icon:'clock'}] as const;
@@ -33,7 +35,8 @@ function Main(){
  useEffect(()=>{void restoreSession().then(async u=>{if(u){setUser(u);await refresh();}}).catch(e=>setError({text:e.message,detail:e instanceof ApiError?e.detail:undefined})).finally(()=>setBoot(false));},[]);
  // Botón atrás de Android: primero cierra hojas/subpantallas, luego vuelve a Inicio y solo entonces sale.
  useHardwareBack(()=>{if(user&&tab!=='home'){setTab('home');return true;}return false;});
- const own=sessions.find(s=>s.opened_by===user?.id&&s.state==='open');
+ useEffect(()=>{if(!user||!offlineEnabled)return;const stop=startSync();let last:string|null=null;const unsubscribe=subscribeSync(s=>{if(!s.running&&s.last_sync&&s.last_sync!==last){last=s.last_sync;void refresh().catch(()=>{});}});return ()=>{stop();unsubscribe();};},[user?.id,refresh]);
+ const own=sessions.find(s=>s.opened_by===user?.id&&s.state==='open'&&(offlineEnabled||!s.device_id));
  function go(target:Tab){setError(null);setTab(target);}
  function history(selectedSale:Sale|null=null,selectedClosure:Closure|null=null,filter=''){setSale(selectedSale);setClosure(selectedClosure);setSessionFilter(filter);setHistoryVersion(n=>n+1);go('history');}
  function catalog(sub:'products'|'customers'){setCatalogTab(sub);setCatalogVersion(n=>n+1);go('catalog');}
@@ -59,6 +62,7 @@ function Main(){
   <View style={{flex:1}}>
    <ProgressBar active={busy}/>
    {errorBanner}
+   <SyncBanner/>
    {tab==='home'&&<HomeScreen user={user} sessions={sessions} busy={busy} run={run} refresh={refresh} go={go} onHistory={()=>history()} onCatalog={catalog}/>}
    {/* Vender permanece montada: el carrito no se pierde al cambiar de pestaña. */}
    <View style={{flex:tab==='sale'?1:0,display:tab==='sale'?'flex':'none'}}><SaleScreen userId={user.id} active={tab==='sale'} session={own} products={products} customers={customers} platforms={platforms} paperWidth={settings.paper_width} refresh={refresh} run={run} busy={busy} onViewSale={s=>history(s)} onOpenCash={()=>go('cash')}/></View>

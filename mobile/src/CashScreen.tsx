@@ -1,3 +1,4 @@
+import {offlineEnabled} from './offline/runtime';
 import React, {useEffect, useState} from 'react';
 import {Text, View} from 'react-native';
 import {Feather} from '@expo/vector-icons';
@@ -12,7 +13,7 @@ const label = (s: CashSession) => `Caja${s.number ? ` #${s.number}` : ''}`;
 export function CashScreen({sessions, user, run, refresh, busy, onClosure, onHistory, onSell}: Props) {
   const [opening, setOpening] = useState(''), [selected, setSelected] = useState<CashSession | null>(null), [cash, setCash] = useState(''), [electronic, setElectronic] = useState(''), [notes, setNotes] = useState(''), [review, setReview] = useState(false), [showClosed, setShowClosed] = useState(8), [now, setNow] = useState(new Date());
   const admin = user.role === 'admin';
-  const own = sessions.find(s => s.opened_by === user.id && s.state === 'open');
+  const own = sessions.find(s => s.opened_by === user.id && s.state === 'open' && (offlineEnabled || !s.device_id));
   const others = sessions.filter(s => s.state === 'open' && s.id !== own?.id);
   const closed = sessions.filter(s => s.state === 'closed');
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(t); }, []);
@@ -134,7 +135,8 @@ function SessionCard({session: s, mine, admin, busy, onHistory, onClose, onSell}
     <View style={[styles.row, {gap: 10, flexWrap: 'wrap'}]}>
       {onSell && <Button title="Vender" icon="shopping-cart" style={{flexGrow: 1}} onPress={onSell}/>}
       <Button title="Ver ventas" icon="list" variant="secondary" style={{flexGrow: 1}} onPress={() => onHistory(s.id)}/>
-      {admin && <Button title="Cerrar caja" icon="lock" variant="outline" style={{flexGrow: 1}} disabled={busy} onPress={onClose} testID={`close-session-${s.number ?? s.id}`}/>}
+      {admin && s.device_id && !offlineEnabled && <Text style={styles.small}>Cierre desde el dispositivo de origen</Text>}
+      {admin && (offlineEnabled || !s.device_id) && <Button title="Cerrar caja" icon="lock" variant="outline" style={{flexGrow: 1}} disabled={busy} onPress={onClose} testID={`close-session-${s.number ?? s.id}`}/>}
     </View>
   </Card>;
 }

@@ -1,3 +1,16 @@
+# Validación de la versión offline (28 de octubre de 2026)
+
+Se añadieron pruebas con archivos SQLite locales reales y dos dispositivos: operación sin red, persistencia tras reapertura, reintento concurrente de una respuesta perdida, precios históricos, falta de stock conciliable, secuencia de cierres, revocación, rollback de escritura local y tickets seguros. La API se instaló y arrancó desde una copia independiente de `server/`, sin el workspace móvil. Los resultados históricos siguientes corresponden a las versiones anteriores; no describen el estado de sincronización actual. Consulta [OFFLINE.md](OFFLINE.md).
+
+Verificado en esta implementación:
+- 15 pruebas Node aprobadas y TypeScript sin errores.
+- E2E web aprobado, incluidos pagos, doble clic, comprobante, inventario y cierre.
+- APK ARM64 compilado con JDK 17; módulo `pos-printer` compilado por Kotlin/Gradle y JavaScript incluido.
+- APK instalado en emulador Android: primer acceso y catálogo; API desconectada; apertura de caja y venta de 1,5 kg a $24.000 = $36.000; cierre forzado del proceso y reapertura sin red; recuperación de sesión, historial y comprobante; reconexión y recepción de exactamente una venta central. Todo con API y datos de prueba aislados.
+- Instalación y arranque de `server/` en una carpeta temporal sin dependencias del proyecto móvil.
+
+Pendiente: hardware físico, permisos/impresión sobre el terminal de 58 mm sin identificar, despliegue en nube real y firma de distribución. El APK local usa firma de desarrollo y URL local; no es un despliegue de producción.
+
 # Estado de implementación y validación
 
 Fecha: 10 de octubre de 2026. Trabajo realizado únicamente en la carpeta seleccionada, que inicialmente no contenía aplicación. No se detuvieron procesos ajenos, no se usó otra base ni se desplegó a servicios externos.

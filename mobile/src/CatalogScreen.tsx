@@ -28,7 +28,7 @@ export function CatalogScreen({products, customers, user, run, refresh, busy, in
     : {price: null, stock: null};
   const canSave = isProducts ? !!name.trim() && priceCents !== null && priceCents > 0 && (!tracks || stockMilli !== null) : !!name.trim() && !!city.trim();
   async function save() {
-    const body = isProducts ? {name: name.trim(), price: normalizeMoney(price), unit, active, stock: tracks ? quantityForApi(stockMilli!) : null} : {name: name.trim(), city: city.trim()};
+    const body = isProducts ? {name: name.trim(), price: normalizeMoney(price), unit, active, stock: tracks ? quantityForApi(stockMilli!) : null,expected_stock_milli:products.find(p=>p.id===editing)?.stock_milli,expected_updated_at:products.find(p=>p.id===editing)?.updated_at} : {name: name.trim(), city: city.trim()};
     await api(`/${tab}${editing && editing !== 'new' ? '/' + editing : ''}`, editing === 'new' ? 'POST' : 'PUT', body);
     setEditing(null); await refresh();
   }

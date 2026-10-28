@@ -1,3 +1,4 @@
+import {offlineEnabled} from './offline/runtime';
 import React from 'react';
 import {Pressable, Text, View, useWindowDimensions} from 'react-native';
 import {Feather} from '@expo/vector-icons';
@@ -7,7 +8,7 @@ import type {Run} from '../App';
 type Props = {user: User; sessions: CashSession[]; busy: boolean; run: Run; refresh: () => Promise<void>; go: (tab: Tab) => void; onHistory: () => void; onCatalog: (sub: 'products' | 'customers') => void};
 export function HomeScreen({user, sessions, busy, run, refresh, go, onHistory, onCatalog}: Props) {
   const {width} = useWindowDimensions();
-  const own = sessions.find(s => s.opened_by === user.id && s.state === 'open');
+  const own = sessions.find(s => s.opened_by === user.id && s.state === 'open' && (offlineEnabled || !s.device_id));
   const admin = user.role === 'admin';
   // Administrador ve la suma de todas las cajas abiertas; vendedor, solo la suya.
   const scope = admin ? sessions.filter(s => s.state === 'open') : own ? [own] : [];

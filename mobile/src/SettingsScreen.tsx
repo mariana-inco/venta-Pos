@@ -1,6 +1,7 @@
 import React, {useEffect, useState} from 'react';
 import {Pressable, Switch, Text, View} from 'react-native';
 import {Feather} from '@expo/vector-icons';
+import {DeviceSettings,CloudDevices} from './DeviceSettings';
 import {api, API_URL} from './api';
 import {Badge, Button, Card, Choice, Confirm, Divider, Field, Logo, Page, Segmented, colors, date, initials, styles} from './ui';
 import type {Settings, User, Platform} from './types';
@@ -23,7 +24,7 @@ export function SettingsScreen({user, settings, platforms, run, refresh, busy, l
   const [business, setBusiness] = useState({business_name: settings.business_name, business_nit: settings.business_nit || '', business_address: settings.business_address || '', business_city: settings.business_city || '', business_phone: settings.business_phone || ''}), [width, setWidth] = useState(String(settings.paper_width));
   const [users, setUsers] = useState<User[]>([]), [username, setUsername] = useState(''), [userName, setUserName] = useState(''), [password, setPassword] = useState(''), [role, setRole] = useState('seller'), [platformName, setPlatformName] = useState(''), [resetUser, setResetUser] = useState(''), [resetPassword, setResetPassword] = useState(''), [audit, setAudit] = useState<Audit[] | null>(null);
   async function loadUsers() { setUsers(await api<User[]>('/users')); }
-  useEffect(() => { if (admin) run(loadUsers); }, []);
+  useEffect(() => { if (admin && open === 'users') run(loadUsers); }, [open]);
   const set = (key: keyof typeof business) => (value: string) => setBusiness(b => ({...b, [key]: value}));
   const usernameError = username && !/^[a-zA-Z0-9_.-]{3,40}$/.test(username) ? 'De 3 a 40 caracteres, sin espacios (letras, números, punto o guion)' : null;
 
@@ -45,7 +46,9 @@ export function SettingsScreen({user, settings, platforms, run, refresh, busy, l
       <Text style={[styles.small, {textAlign: 'center'}]}>Comprobantes en papel de {settings.paper_width} mm · Hora de Colombia</Text>
     </Card>
 
+    <DeviceSettings run={run} busy={busy}/>
     {admin && <>
+      <CloudDevices run={run} busy={busy}/>
       <Group id="business" open={open} onToggle={setOpen} icon="briefcase" title="Datos del negocio" subtitle="Lo que se imprime en el comprobante">
         <Field label="Nombre comercial" value={business.business_name} onChange={set('business_name')} testID="settings-name"/>
         <Field label="NIT o identificación (opcional)" kind="plain" value={business.business_nit} onChange={set('business_nit')} placeholder="Ej. 900.123.456-7"/>

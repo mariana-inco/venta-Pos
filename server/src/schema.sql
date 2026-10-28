@@ -23,7 +23,6 @@ CREATE TABLE IF NOT EXISTS cash_sessions (
  id TEXT PRIMARY KEY, opened_by TEXT NOT NULL REFERENCES users(id), opened_at TEXT NOT NULL,
  opening_cents INTEGER NOT NULL CHECK(opening_cents>=0), state TEXT NOT NULL CHECK(state IN ('open','closed')), closed_at TEXT
 );
-CREATE UNIQUE INDEX IF NOT EXISTS one_open_session ON cash_sessions(opened_by) WHERE state='open';
 CREATE TABLE IF NOT EXISTS sales (
  id TEXT PRIMARY KEY, number INTEGER NOT NULL UNIQUE, session_id TEXT NOT NULL REFERENCES cash_sessions(id),
  seller_id TEXT NOT NULL REFERENCES users(id), customer_id TEXT NOT NULL REFERENCES customers(id),

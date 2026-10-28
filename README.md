@@ -1,6 +1,6 @@
 # DANNY'S POS — Distribuidora & Salsamentaria Danny's
 
-Aplicación Expo/React Native dirigida a Android con API Node 24 y SQLite persistente. Implementa acceso por roles, productos por unidad/kg, clientes, stock opcional, pagos, caja por vendedor, cierres administrativos auditables, historial y PDF térmicos de 80 mm por defecto (58 mm también disponible).
+Aplicación Expo/React Native para Android con SQLite local y sincronización, API Node 24 independiente y SQLite persistente en el servidor. La interfaz web conserva su operación conectada. Implementa acceso por roles, productos por unidad/kg, clientes, stock opcional, pagos, caja por vendedor, cierres administrativos auditables, historial y PDF térmicos de 80 mm por defecto (58 mm también disponible).
 
 ## Inicio rápido en navegador
 
@@ -39,7 +39,7 @@ En `mobile/.env`, configura `EXPO_PUBLIC_API_URL` con la IP del servidor visible
 
 API: puerto **4317**. Expo: puerto **8097**. No se detienen otros procesos. Si un puerto está ocupado, cambia `PORT` y la URL del cliente, o pasa otro puerto a Expo y actualiza `CORS_ORIGINS`. Los scripts no despliegan ni modifican proyectos externos.
 
-Esta versión requiere conexión a la API para guardar y consultar. No se implementa venta offline. El celular conserva la referencia de una venta cuya confirmación quedó pendiente y permite reintentar sin duplicar. Los datos definitivos están en el servidor.
+El APK Android puede vender, abrir/cerrar caja, consultar historial e imprimir sin internet después del primer acceso y descarga del catálogo. Guarda las operaciones en SQLite local y las sincroniza periódicamente con identidad por dispositivo y por evento. La web requiere conexión. Consulta [Operación offline y sincronización](docs/OFFLINE.md) para reglas de caja, inventario, revocación, construcción del APK e impresión.
 
 ## Diseño y navegación
 
@@ -55,12 +55,12 @@ Navegación inferior de cinco pestañas: Inicio, Caja, **Vender** (al centro), C
 1. Administrador configura negocio (nombre, NIT, dirección, ciudad, teléfono y papel), plataformas y usuarios en Perfil, y productos/clientes en Catálogo.
 2. Vendedor inicia sesión y abre su caja con saldo inicial.
 3. En Vender selecciona o crea cliente, añade productos, ingresa unidades enteras o kg con hasta tres decimales, escoge pago y confirma.
-4. La API calcula el total, conserva precios históricos, actualiza stock si está activado y registra venta/detalles/pago en una transacción.
+4. Android calcula y guarda la venta, su detalle y el envío pendiente en una transacción SQLite local. Al sincronizar, la API valida con el catálogo histórico y consolida venta, pago e inventario. La web conserva el registro directo en la API.
 5. En el comprobante, abre/guarda, comparte o imprime el PDF. Una falla de impresión no revierte ni duplica la venta.
-6. Administrador entra en Caja, cuenta efectivo (incluido el saldo inicial), verifica pagos electrónicos, revisa diferencias y confirma el cierre definitivo.
+6. Administrador entra en Caja (en el dispositivo de origen para cajas móviles), cuenta efectivo (incluido el saldo inicial), verifica pagos electrónicos, revisa diferencias y confirma el cierre definitivo.
 7. En Historial de cierres consulta originales, sus ventas y PDF; puede anexar una aclaración auditada sin cambiar el cierre.
 
-**Regla de caja:** una abierta por vendedor. Solo su propietario vende en ella. Administrador consulta/cierra cualquier caja. Dinero inicial separado de ventas: efectivo esperado = saldo inicial + ventas efectivo. Diferencia = declarado − esperado. Electrónico se concilia independientemente.
+**Regla de caja:** una abierta por vendedor y dispositivo. Solo su propietario vende en ella. El administrador cierra cajas móviles desde el equipo de origen, para incluir las ventas pendientes de sincronización; la web consulta su consolidación. Dinero inicial separado de ventas: efectivo esperado = saldo inicial + ventas efectivo. Diferencia = declarado − esperado. Electrónico se concilia independientemente.
 
 ## Verificación
 
@@ -95,8 +95,10 @@ El catálogo admite stock opcional: vacío desactiva control; un valor activa ex
 - [Validación y estado por etapa](docs/VALIDACION.md)
 - [Despliegue en Railway + Vercel](docs/DESPLIEGUE.md)
 
-Pendiente de aceptación: instalación y pruebas en celulares Android reales, prueba física de la impresora genérica MTP-3 de 80 mm e integración Bluetooth ESC/POS según la variante real. PDF y impresión directa Bluetooth son funciones distintas.
+Incluye módulo Android Bluetooth Classic SPP/ESC-POS con selección de impresora emparejada, papel de 58/80 mm y prueba de impresión. Pendiente de aceptación física: la ficha más reciente corresponde a un terminal con impresora integrada de 58 mm, sin marca/modelo ni SDK; no se da por compatible con Bluetooth sin identificarlo. PDF e impresión Bluetooth son funciones distintas.
 
 ## Instalador móvil
 
 `mobile/eas.json` incluye un perfil `preview` para APK Android y un perfil de producción. Con una cuenta Expo configurada, desde `mobile/`, se puede ejecutar `npx eas-cli build --platform android --profile preview`. Configura una API HTTPS accesible por el celular antes de construir. No se ejecutó una compilación remota ni se publicó la app en tiendas. El código JavaScript nativo puede verificarse localmente con `npm exec -w mobile -- expo export --platform android`.
+
+Construcción local del APK con JavaScript incluido: `EXPO_PUBLIC_API_URL=https://tu-api npm run build:android`. Para HTTP de prueba, añade `POS_ALLOW_HTTP=1`. El APK local usa firma de desarrollo; para distribución usa EAS. Detalles en `docs/OFFLINE.md`.

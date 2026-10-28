@@ -1,11 +1,13 @@
 # Arquitectura y plan de implementación
 
+Actualización: la arquitectura Android con SQLite local, sincronización por dispositivo y Bluetooth se detalla en [OFFLINE.md](OFFLINE.md). Las etapas siguientes documentan el origen de la versión conectada.
+
 Inspección inicial: carpeta sin archivos de aplicación, únicamente un repositorio Git vacío. Todos los archivos se crean dentro de esta carpeta. No se modifica otra tarea ni se usan puertos ocupados sin comprobarlos.
 
 ## Decisiones
 
 - Cliente móvil Expo/React Native dirigido a Android, según la confirmación del usuario. API Node 24 + Express. SQLite en disco con claves foráneas, WAL y transacciones BEGIN IMMEDIATE. Una instalación de API centraliza las cajas de todos los celulares; no usar el archivo SQLite en unidades de red.
-- Primera versión con conexión obligatoria. No hay cola de ventas offline ni sincronización. Una petición fallida puede consultarse/reintentarse con la misma clave de idempotencia sin duplicar la venta.
+- Versión inicial con conexión obligatoria (sustituida en Android por el modo offline). No hay cola de ventas offline ni sincronización. Una petición fallida puede consultarse/reintentarse con la misma clave de idempotencia sin duplicar la venta.
 - Una caja abierta por vendedor; solo su propietario vende en ella. Administradores consultan y cierran cualquier caja. El saldo inicial se suma al efectivo esperado, nunca al total vendido.
 - Dinero en centavos enteros y cantidades en milésimas (máximo tres decimales para kg, enteros para unidades). Redondeo comercial por línea a centavo mediante enteros/BigInt. La API calcula precios y totales.
 - Credenciales scrypt con sal, tokens opacos aleatorios almacenados como SHA-256, caducidad y revocación. Tokens móviles en SecureStore. HTTPS obligatorio al exponer el servidor fuera del desarrollo local.

@@ -1,4 +1,5 @@
 import express from 'express';
+import {mountSync, mountDeviceAdmin} from './sync.js';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
@@ -18,11 +19,13 @@ export function createApp(db) {
   if(origin){if(!origins.includes(origin))return res.status(403).json({error:'Origen web no autorizado.'});res.set('Access-Control-Allow-Origin',origin).vary('Origin');res.set('Access-Control-Allow-Headers','Authorization,Content-Type');res.set('Access-Control-Allow-Methods','GET,POST,PUT,PATCH,DELETE,OPTIONS');}
   if(req.method==='OPTIONS')return res.sendStatus(204);next();
  });
- app.use(express.json({limit:'64kb'}));
+ app.use(express.json({limit:'256kb',inflate:false}));
  const noCache=(req,res,next)=>{res.set('Cache-Control','no-store');next();};app.use(noCache);
  app.get('/health',(_,res)=>res.json({ok:true}));
  app.post('/api/auth/login',rateLimit({windowMs:15*60*1000,limit:20,standardHeaders:'draft-8',legacyHeaders:false,message:{error:'Demasiados intentos. Espera 15 minutos.'}}),validate(schemas.login),async(req,res)=>res.json(await login(db,req.input.username,req.input.password)));
+ mountSync(app,db);
  app.use('/api',authenticate(db));
+ mountDeviceAdmin(app,db);
  app.get('/api/me',(req,res)=>res.json(req.user));
  app.post('/api/auth/logout',(req,res)=>{db.prepare('DELETE FROM auth_sessions WHERE token_hash=?').run(req.tokenHash);audit(db,req.user.id,'auth.logout',req.user.id);res.json({ok:true});});
  app.get('/api/users',admin,(_,res)=>res.json(db.prepare('SELECT id,name,username,role,active FROM users ORDER BY name').all()));
@@ -31,13 +34,13 @@ export function createApp(db) {
   const u=db.prepare('SELECT * FROM users WHERE id=?').get(req.params.id);if(!u) fail(404,'Usuario no encontrado.');
   if(u.id===req.user.id && !req.input.active) fail(400,'No puedes desactivar tu propia cuenta.');
   db.prepare('UPDATE users SET active=? WHERE id=?').run(Number(req.input.active),u.id);
-  if(!req.input.active) db.prepare('DELETE FROM auth_sessions WHERE user_id=?').run(u.id);
+  if(!req.input.active) {db.prepare('DELETE FROM auth_sessions WHERE user_id=?').run(u.id);db.prepare('UPDATE device_access SET revoked=1 WHERE user_id=?').run(u.id);}
   audit(db,req.user.id,'user.status',u.id,req.input);return {...publicUser(u),active:Number(req.input.active)};
  })));
  app.post('/api/users/:id/password',admin,validate(schemas.password),async(req,res)=>{
   const u=db.prepare('SELECT id FROM users WHERE id=?').get(req.params.id);if(!u) fail(404,'Usuario no encontrado.');
   const hash=await hashPassword(req.input.password);
-  transaction(db,()=>{db.prepare('UPDATE users SET password_hash=? WHERE id=?').run(hash,u.id);db.prepare('DELETE FROM auth_sessions WHERE user_id=?').run(u.id);audit(db,req.user.id,'user.password_reset',u.id);});res.json({ok:true});
+  transaction(db,()=>{db.prepare('UPDATE users SET password_hash=? WHERE id=?').run(hash,u.id);db.prepare('DELETE FROM auth_sessions WHERE user_id=?').run(u.id);db.prepare('UPDATE device_access SET revoked=1 WHERE user_id=?').run(u.id);audit(db,req.user.id,'user.password_reset',u.id);});res.json({ok:true});
  });
  const settingsQuery=`SELECT business_name,paper_width,${BUSINESS_FIELDS.join(',')} FROM settings WHERE id=1`;
  app.get('/api/settings',(_,res)=>res.json(db.prepare(settingsQuery).get()));
@@ -46,14 +49,16 @@ export function createApp(db) {
   const fields=BUSINESS_FIELDS.filter(f=>req.input[f]!==undefined);
   const result=transaction(db,()=>{db.prepare(`UPDATE settings SET business_name=?,paper_width=?${fields.map(f=>`,${f}=?`).join('')} WHERE id=1`).run(req.input.business_name,req.input.paper_width,...fields.map(f=>req.input[f]));audit(db,req.user.id,'settings.update','1',req.input);return db.prepare(settingsQuery).get();});res.json(result);
  });
- app.get('/api/products',(req,res)=>res.json(db.prepare(`SELECT * FROM products ${req.user.role==='admin'?'': 'WHERE active=1'} ORDER BY name`).all()));
+ app.get('/api/products',(req,res)=>res.json(db.prepare(`SELECT * FROM products ${req.user.role==='admin'?'': 'WHERE active=1'} ORDER BY name`).all().map(p=>({...p,stock_milli:p.stock_milli===null?null:p.stock_milli-(db.prepare('SELECT quantity_milli FROM stock_debts WHERE product_id=?').get(p.id)?.quantity_milli||0)}))));
  const saveProduct=(req,res)=>res.json(transaction(db,()=>{
   const p=req.input;const productId=req.params.id||id();const previous=req.params.id?db.prepare('SELECT * FROM products WHERE id=?').get(productId):null;
   if(req.params.id&&!previous) fail(404,'Producto no encontrado.');
-  if(previous && previous.unit!==p.unit && db.prepare('SELECT id FROM sale_items WHERE product_id=?').get(productId)) fail(409,'Un producto con ventas conserva su unidad de medida. Crea otro producto.');
+  if(previous && ((p.expected_updated_at!==undefined && p.expected_updated_at!==previous.updated_at)||(p.expected_stock_milli!==undefined && p.expected_stock_milli!==(previous.stock_milli===null?null:previous.stock_milli-(db.prepare('SELECT quantity_milli FROM stock_debts WHERE product_id=?').get(productId)?.quantity_milli||0))))) fail(409,'El producto o sus existencias cambiaron. Actualiza el catálogo antes de guardar.');
+  if(previous && previous.unit!==p.unit && (db.prepare('SELECT id FROM sale_items WHERE product_id=?').get(productId)||db.prepare("SELECT 1 FROM catalog_versions v, json_each(v.payload,'$.products') p WHERE json_extract(p.value,'$.id')=? LIMIT 1").get(productId))) fail(409,'Un producto vendido o descargado por un dispositivo conserva su unidad de medida. Crea otro producto.');
   const price=money(p.price);if(price<=0) fail(400,'El precio debe ser mayor a cero.');
   const stock=p.stock===null?null:(scaled(p.stock,3,'Existencias')===0?0:quantity(p.stock,p.unit)); const updated=now();
   db.prepare('INSERT INTO products VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,price_cents=excluded.price_cents,unit=excluded.unit,active=excluded.active,stock_milli=excluded.stock_milli,updated_at=excluded.updated_at').run(productId,p.name,price,p.unit,Number(p.active),stock,previous?.created_at||updated,updated);
+  if(previous)db.prepare('DELETE FROM stock_debts WHERE product_id=?').run(productId);
   audit(db,req.user.id,previous?'product.update':'product.create',productId,{before:previous,after:{...p,price_cents:price,stock_milli:stock}});
   return db.prepare('SELECT * FROM products WHERE id=?').get(productId);
  }));
@@ -86,8 +91,8 @@ export function createApp(db) {
   res.json(rows.map(c=>({...c,...totals(db,c.id)})));
  });
  app.post('/api/cash-sessions',validate(schemas.opening),(req,res)=>res.status(201).json(transaction(db,()=>{
-  if(db.prepare("SELECT id FROM cash_sessions WHERE opened_by=? AND state='open'").get(req.user.id))fail(409,'Ya tienes una caja abierta.');
-  const sessionId=id();db.prepare('INSERT INTO cash_sessions VALUES (?,?,?,?,?,?)').run(sessionId,req.user.id,now(),money(req.input.opening),'open',null);audit(db,req.user.id,'cash.open',sessionId,req.input);return sessionFor(db,req.user,sessionId);
+  if(db.prepare("SELECT id FROM cash_sessions WHERE opened_by=? AND state='open' AND device_id IS NULL").get(req.user.id))fail(409,'Ya tienes una caja abierta.');
+  const sessionId=id();db.prepare('INSERT INTO cash_sessions (id,opened_by,opened_at,opening_cents,state,closed_at) VALUES (?,?,?,?,?,?)').run(sessionId,req.user.id,now(),money(req.input.opening),'open',null);audit(db,req.user.id,'cash.open',sessionId,req.input);return sessionFor(db,req.user,sessionId);
  })));
  app.get('/api/cash-sessions/:id',(req,res)=>{const session=sessionFor(db,req.user,req.params.id);const computed=totals(db,session.id);res.json({...session,...computed,expected_cash_cents:session.opening_cents+computed.cash_cents,closure_id:db.prepare('SELECT id FROM closures WHERE session_id=?').get(session.id)?.id||null});});
  app.post('/api/sales',validate(schemas.sale),async(req,res)=>{const sale=recordSale(db,req.user,req.input);res.status(201).json({...sale,...await generateDocuments(db,'sale',sale)});});

@@ -6,7 +6,7 @@ export const schemas = {
  user:z.object({username:z.string().regex(/^[a-zA-Z0-9_.-]{3,40}$/),name:text(),password:z.string().min(12).max(128),role:z.enum(['admin','seller'])}),
  userStatus:z.object({active:z.boolean()}),
  password:z.object({password:z.string().min(12).max(128)}),
- product:z.object({name:text(),price:decimal,unit:z.enum(['unit','kg']),active:z.boolean().default(true),stock:decimal.nullable().default(null)}),
+ product:z.object({name:text(),price:decimal,unit:z.enum(['unit','kg']),active:z.boolean().default(true),stock:decimal.nullable().default(null),expected_stock_milli:z.number().int().nullable().optional(),expected_updated_at:z.string().optional()}),
  customer:z.object({name:text(),city:text(100)}),
  platform:z.object({name:text(80),active:z.boolean().default(true)}),
  settings:z.object({business_name:text(),paper_width:z.union([z.literal(58),z.literal(80)]),business_nit:z.string().trim().max(40).optional(),business_address:z.string().trim().max(160).optional(),business_phone:z.string().trim().max(40).optional(),business_city:z.string().trim().max(100).optional()}),

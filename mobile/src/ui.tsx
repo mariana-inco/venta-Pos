@@ -40,7 +40,7 @@ export function useBack(active: boolean, handler: () => void) {
 export function handleBack() { const top = backStack[backStack.length - 1]; if (!top) return false; top(); return true; }
 export function useHardwareBack(fallback: () => boolean) {
   const ref = useRef(fallback); ref.current = fallback;
-  useEffect(() => { const sub = BackHandler.addEventListener('hardwareBackPress', () => handleBack() || ref.current()); return () => sub.remove(); }, []);
+  useEffect(() => { if (Platform.OS !== 'android') return; const sub = BackHandler.addEventListener('hardwareBackPress', () => handleBack() || ref.current()); return () => sub.remove(); }, []);
 }
 
 type ButtonProps = {title: string; onPress: () => void; variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger'; size?: 'sm' | 'md' | 'lg'; icon?: Icon; disabled?: boolean; loading?: boolean; testID?: string; style?: StyleProp<ViewStyle>; secondary?: boolean; danger?: boolean};

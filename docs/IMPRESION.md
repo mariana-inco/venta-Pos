@@ -1,3 +1,11 @@
+# Impresión actual: Android offline
+
+El módulo Bluetooth Classic SPP/ESC-POS ya está implementado en `mobile/modules/pos-printer`. Lee tickets guardados en SQLite local y no requiere internet. Configuración, límites y prueba física en [OFFLINE.md](OFFLINE.md#impresión).
+
+La ficha enviada el 28 de octubre indica un terminal con impresora integrada de **58 mm**, sin identificar marca ni modelo. No confirma que su impresora interna use Bluetooth ni ESC/POS; se requiere el SDK o protocolo del fabricante para asegurar compatibilidad. La selección Bluetooth actual corresponde a equipos ya emparejados.
+
+El resto del documento conserva el diseño y la investigación de la versión inicial. Las referencias a una MTP-3 de 80 mm y a una integración propuesta son antecedentes, no la identificación del hardware actual.
+
 # Impresión y prueba real
 
 Configuración confirmada por el usuario: celular Android e impresora con papel de 80 mm. Este es el ancho predeterminado para nuevas instalaciones. Impresora indicada por el usuario: genérica, modelo MTP-3. La variante de hardware, firmware y transporte Bluetooth aún requieren prueba.

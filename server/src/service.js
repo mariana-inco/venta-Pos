@@ -30,6 +30,7 @@ export function recordSale(db,user,input) {
   const existing=db.prepare('SELECT id,request_hash FROM sales WHERE seller_id=? AND request_key=?').get(user.id,input.request_key);
   if(existing) {if(existing.request_hash!==requestHash) fail(409,'Esta referencia ya fue usada para otra venta.');return saleDetail(db,user,existing.id);}
   const session=sessionFor(db,user,input.session_id);
+  if(session.device_id) fail(409,'Registra las ventas de esta caja desde su dispositivo de origen.');
   if(session.opened_by!==user.id) fail(403,'Solo el propietario puede vender en esta caja.');
   if(session.state!=='open') fail(409,'La caja está cerrada. Abre una nueva.');
   const customer=db.prepare('SELECT * FROM customers WHERE id=? AND active=1').get(input.customer_id);
@@ -71,21 +72,23 @@ export function closureDetail(db,closureId) {
  if(!closure) fail(404,'Cierre no encontrado.');
  return {...closure,session_number:sessionNumber(db,closure.session_id),snapshot:JSON.parse(closure.snapshot),annotations:db.prepare('SELECT n.*,u.name AS author_name FROM closure_notes n JOIN users u ON u.id=n.author_id WHERE closure_id=? ORDER BY n.created_at').all(closureId)};
 }
-export function closeSession(db,user,sessionId,input) {
+export function closeSession(db,user,sessionId,input,offline=null) {
  if(user.role!=='admin') fail(403,'Solo el administrador puede cerrar la caja.');
  return transaction(db,()=>{
   const session=sessionFor(db,user,sessionId);
+  if(session.device_id && offline?.deviceId!==session.device_id) fail(409,'Cierra esta caja desde su dispositivo de origen para incluir todas las ventas sin conexión.');
   if(session.state!=='open') fail(409,'La caja ya está cerrada. Consulta su cierre en el historial.');
   const computed=totals(db,session.id);
   if(input.reviewed_sale_count!==undefined && input.reviewed_sale_count!==computed.sale_count) fail(409,'Se registraron ventas después de revisar la caja. Cancela y vuelve a abrir la conciliación con los totales actualizados.');
   const declaredCash=money(input.declared_cash),declaredElectronic=money(input.declared_electronic);
   const expectedCash=session.opening_cents+computed.cash_cents;
-  const created=now(); const closureId=id();
+  const created=offline?.createdAt||now(); const closureId=offline?.id||id();
   const number=db.prepare('SELECT COALESCE(MAX(number),0)+1 AS n FROM closures').get().n;
   const snapshot={business_name:db.prepare('SELECT business_name FROM settings WHERE id=1').get().business_name,session_id:session.id,
    opened_at:session.opened_at,closed_at:created,opened_by:session.opened_by,opener_name:session.opener_name,admin_name:user.name,
    opening_cents:session.opening_cents,...computed,expected_cash_cents:expectedCash,declared_cash_cents:declaredCash,declared_electronic_cents:declaredElectronic,
    cash_difference_cents:declaredCash-expectedCash,electronic_difference_cents:declaredElectronic-computed.electronic_cents,
+   ...(offline?{ticket_number:offline.ticketNumber,device_id:offline.deviceId}:{}),
    total_difference_cents:declaredCash-expectedCash+declaredElectronic-computed.electronic_cents,notes:input.notes};
   db.prepare('INSERT INTO closures VALUES (?,?,?,?,?,?)').run(closureId,number,session.id,user.id,created,JSON.stringify(snapshot));
   db.prepare("UPDATE cash_sessions SET state='closed',closed_at=? WHERE id=? AND state='open'").run(created,session.id);

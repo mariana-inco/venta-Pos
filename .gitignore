@@ -23,3 +23,9 @@ tmp/
 *.sqlite3-shm
 .vercel
 .env*.local
+
+# Generated native projects; custom printer source lives in mobile/modules/.
+mobile/android/
+mobile/ios/
+mobile/modules/*/android/build/
+mobile/modules/*/android/.gradle/

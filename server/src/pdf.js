@@ -74,7 +74,7 @@ function businessHeader(s,L) {
 export async function receiptPdf(sale,width=58) {
  const L=LAYOUT[width]||LAYOUT[80];const s=sale.snapshot;
  const lines=[...businessHeader(s,L),{space:4},{rule:'solid'},
-  {text:'COMPROBANTE DE VENTA',bold:true,align:'center',size:L.small+0.5},{text:`Venta ${receiptNumber(sale.number)}`,bold:true,size:L.total,align:'center'},{rule:'solid'},
+  {text:'COMPROBANTE DE VENTA',bold:true,align:'center',size:L.small+0.5},{text:`Venta ${(sale.snapshot.ticket_number || receiptNumber(sale.number))}`,bold:true,size:L.total,align:'center'},{rule:'solid'},
   {pair:['Fecha',dateOf(sale.created_at)],boldRight:true},{pair:['Hora',timeOf(sale.created_at)],boldRight:true},{pair:['Vendedor',s.seller_name],boldRight:true}];
  if(sale.session_number)lines.push({pair:['Caja',`#${sale.session_number}`],boldRight:true});
  lines.push({space:3},{pair:['Cliente',s.customer_name],boldRight:true},{pair:['Ciudad',s.customer_city],boldRight:true},{rule:'dash'},{pair:['PRODUCTO','VALOR'],bold:true,size:L.small},{rule:'dash'});
@@ -91,11 +91,11 @@ export async function receiptPdf(sale,width=58) {
  }
  lines.push({rule:'dash'},{space:2},{text:`¡Gracias por comprar en ${shortBrand(s.business_name)}!`,bold:true,align:'center'},{space:3},
   {text:'Comprobante de venta.',align:'center',size:L.small},{text:'No es factura electrónica.',align:'center',size:L.small});
- return build(lines,width,`Venta ${receiptNumber(sale.number)}`);
+ return build(lines,width,`Venta ${(sale.snapshot.ticket_number || receiptNumber(sale.number))}`);
 }
 export async function closurePdf(closure,width=58) {
  const L=LAYOUT[width]||LAYOUT[80];const s=closure.snapshot;const signed=n=>`${n>0?'+':''}${cop(n)}`;
- const lines=[...businessHeader(s,L),{space:4},{rule:'solid'},{text:'CIERRE DE CAJA',bold:true,align:'center',size:L.small+0.5},{text:`Cierre ${receiptNumber(closure.number)}`,bold:true,size:L.total,align:'center'},{rule:'solid'}];
+ const lines=[...businessHeader(s,L),{space:4},{rule:'solid'},{text:'CIERRE DE CAJA',bold:true,align:'center',size:L.small+0.5},{text:`Cierre ${(closure.snapshot.ticket_number || receiptNumber(closure.number))}`,bold:true,size:L.total,align:'center'},{rule:'solid'}];
  if(closure.session_number)lines.push({pair:['Caja',`#${closure.session_number}`],boldRight:true});
  lines.push({pair:['Apertura',stamp(s.opened_at)],boldRight:true},{pair:['Cierre',stamp(s.closed_at)],boldRight:true},{pair:['Abrió',s.opener_name],boldRight:true},{pair:['Cerró',s.admin_name],boldRight:true},{pair:['Ventas',String(s.sale_count)],boldRight:true},
   {rule:'dash'},{pair:['Saldo inicial',cop(s.opening_cents)]},{pair:['Ventas efectivo',cop(s.cash_cents)]},{pair:['Ventas electrónicas',cop(s.electronic_cents)]},
@@ -106,5 +106,5 @@ export async function closurePdf(closure,width=58) {
  if(s.platforms.length)lines.push({rule:'dash'},{text:'POR PLATAFORMA',bold:true},...s.platforms.map(p=>({pair:[p.platform_name,cop(p.amount)]})));
  if(s.notes)lines.push({rule:'dash'},{text:'Observaciones',bold:true},{text:s.notes});
  lines.push({rule:'dash'},{text:'Valores originales del cierre. Las diferencias se concilian por separado.',size:L.small,align:'center'});
- return build(lines,width,`Cierre ${receiptNumber(closure.number)}`);
+ return build(lines,width,`Cierre ${(closure.snapshot.ticket_number || receiptNumber(closure.number))}`);
 }
