@@ -9,7 +9,9 @@ Verificado en esta implementación:
 - APK instalado en emulador Android: primer acceso y catálogo; API desconectada; apertura de caja y venta de 1,5 kg a $24.000 = $36.000; cierre forzado del proceso y reapertura sin red; recuperación de sesión, historial y comprobante; reconexión y recepción de exactamente una venta central. Todo con API y datos de prueba aislados.
 - Instalación y arranque de `server/` en una carpeta temporal sin dependencias del proyecto móvil.
 
-Pendiente: hardware físico, permisos/impresión sobre el terminal de 58 mm sin identificar, despliegue en nube real y firma de distribución. El APK local usa firma de desarrollo y URL local; no es un despliegue de producción.
+Despliegue Coolify del 28 de octubre: `backend-pos.dromos.co` en Stanley/production, commit de aplicación `7d7068e3c707fd3441d58f8c83e9d988fc3a9057`. Compilación Docker y healthcheck aprobados. HTTPS `/health` devuelve 200; `/api/me` y `/api/sync/catalog` sin autorización devuelven 401; CORS permite el origen local configurado y rechaza uno ajeno. Se recreó el contenedor sin reconstruir y se verificaron el mismo administrador, `PRAGMA integrity_check = ok` y el respaldo inicial persistente. No se crearon ventas de prueba en producción ni se verificó un login positivo con contraseña en nube.
+
+Pendiente: hardware físico, permisos/impresión sobre el terminal de 58 mm sin identificar y firma de distribución. `output/dannys-pos-cloud.apk` es una compilación ARM64 con firma de desarrollo y la URL HTTPS de nube, compilada correctamente; aún requiere aceptación en el terminal físico.
 
 # Estado de implementación y validación
 

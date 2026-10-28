@@ -1,4 +1,25 @@
-# Despliegue: API en Railway + web en Vercel
+# Despliegue: Coolify, Railway y cliente web
+
+## Instancia de Coolify Dromos
+
+Publicada el 28 de octubre de 2026 en **Stanley → production → backend-pos**.
+
+- API: `https://backend-pos.dromos.co`; comprobación pública: `/health`.
+- Recurso Coolify: `0sxtn0nojcnijnl1dxn7rmev`, servidor `localhost`.
+- Repositorio: `mariana-inco/venta-Pos`, rama `deploy/backend-pos`. Despliegue manual desde Coolify, con Dockerfile `/server/Dockerfile` y directorio base `/server`.
+- Puerto interno `4317`, sin mapeo adicional de puertos al host. HTTPS y redirección HTTP gestionados por el proxy; Cloudflare tiene el registro A proxied de `backend-pos` al servidor existente.
+- Volumen Docker `0sxtn0nojcnijnl1dxn7rmev-backend-pos-data` montado en `/data`. Base `/data/pos.sqlite`, respaldos `/data/backups`, una sola instancia.
+- Variables: `NODE_ENV=production`, `HOST=0.0.0.0`, `PORT=4317`, `DATABASE_PATH=/data/pos.sqlite`, `BACKUP_DIR=/data/backups`, `TRUST_PROXY=1`.
+- CORS permite `http://localhost:8097,http://127.0.0.1:8097`. Al publicar una web, añadir su origen exacto. Android nativo no necesita un origen CORS.
+- Se trasladó únicamente el administrador local `admin`, conservando identidad y hash de contraseña; no se copiaron sesiones de acceso. La instalación local no tenía productos, clientes, cajas ni ventas. Respaldo inicial: `/data/backups/initial-admin.sqlite`.
+
+Para una copia consistente, ejecutar `node src/backup.js` en la terminal del recurso y descargar el archivo fuera del servidor. El respaldo inicial está en el mismo volumen: no sustituye una política de copias externas. Antes de actualizar, respaldar y comprobar que el despliegue conserva exactamente este volumen.
+
+Para conectar el cliente, configurar `EXPO_PUBLIC_API_URL=https://backend-pos.dromos.co` antes de iniciar Expo o generar el APK. `output/dannys-pos-cloud.apk` es la compilación ARM64 de prueba con esta URL y firma de desarrollo; no requiere USB ni permite HTTP sin cifrar. El cambio de URL crea una base SQLite local distinta: sincronizar cualquier pendiente del servidor anterior antes de cambiar de APK.
+
+La web local y el servidor de desarrollo conservan su configuración anterior hasta cambiar explícitamente la URL del cliente. Este despliegue publica la API, no una web.
+
+## Otros proveedores
 
 La API usa SQLite en un archivo y debe correr como **un solo servidor permanente con disco persistente**. Vercel no sirve para la API (disco de solo lectura y funciones efímeras: da `500 FUNCTION_INVOCATION_FAILED` y perdería las ventas). Vercel solo publica las pantallas web.
 
