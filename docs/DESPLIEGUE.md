@@ -17,7 +17,7 @@ Para una copia consistente, ejecutar `node src/backup.js` en la terminal del rec
 
 Para conectar el cliente, configurar `EXPO_PUBLIC_API_URL=https://backend-pos.dromos.co` antes de iniciar Expo o generar el APK. `output/dannys-pos-cloud.apk` es la compilación ARM64 de prueba con esta URL y firma de desarrollo; no requiere USB ni permite HTTP sin cifrar. El cambio de URL crea una base SQLite local distinta: sincronizar cualquier pendiente del servidor anterior antes de cambiar de APK.
 
-La web local y el servidor de desarrollo conservan su configuración anterior hasta cambiar explícitamente la URL del cliente. Este despliegue publica la API, no una web.
+La web local está conectada a esta API mediante `mobile/.env` (`EXPO_PUBLIC_API_URL=https://backend-pos.dromos.co`). Abrir `http://localhost:8097` y volver a iniciar sesión si quedaba una sesión del servidor anterior. Para levantar solo la web, ejecutar `npm run web -w mobile`; no necesita arrancar la API local. Este despliegue publica la API, no una web pública.
 
 ## Otros proveedores
 

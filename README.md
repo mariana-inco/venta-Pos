@@ -4,6 +4,8 @@ Aplicación Expo/React Native para Android con SQLite local y sincronización, A
 
 ## Inicio rápido en navegador
 
+Para usar el backend desplegado en Coolify, configura `EXPO_PUBLIC_API_URL=https://backend-pos.dromos.co` en `mobile/.env` y ejecuta `npm run web -w mobile`. Abre `http://localhost:8097`. Reinicia Expo y recarga el navegador después de cambiar esta URL; una sesión del backend local requiere volver a iniciar sesión en nube.
+
 Desde la raíz del proyecto:
 
 ```sh
