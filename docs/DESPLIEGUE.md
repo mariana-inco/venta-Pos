@@ -5,6 +5,7 @@
 Publicada el 28 de octubre de 2026 en **Stanley → production → backend-pos**.
 
 - API: `https://backend-pos.dromos.co`; comprobación pública: `/health`.
+- Panel Coolify: `https://cloud.dromos.com.co`; enlace del entorno proporcionado para continuar el despliegue: `https://cloud.dromos.com.co/project/6osyrc1jxg7acte4eun8qmzo/environment/25g6mlbpt8vrprx3yxypevwl`. Requiere sesión autenticada; comprobar el recurso antes de ejecutar acciones.
 - Recurso Coolify: `0sxtn0nojcnijnl1dxn7rmev`, servidor `localhost`.
 - Repositorio: `mariana-inco/venta-Pos`, rama `deploy/backend-pos`. Despliegue manual desde Coolify, con Dockerfile `/server/Dockerfile` y directorio base `/server`.
 - Puerto interno `4317`, sin mapeo adicional de puertos al host. HTTPS y redirección HTTP gestionados por el proxy; Cloudflare tiene el registro A proxied de `backend-pos` al servidor existente.
@@ -78,3 +79,13 @@ Con `railway ssh`, ejecuta `npm run backup`: crea una copia consistente en `/dat
 Para el APK, configura `EXPO_PUBLIC_API_URL` con la URL HTTPS de Railway antes de `eas build` (ver README).
 
 Para sincronización e impresión Android, consulta [OFFLINE.md](OFFLINE.md). No uses el disco efímero del contenedor para ventas, catálogos históricos o cola de recepción.
+
+## Actualización del 10 de noviembre de 2026
+
+API desplegada manualmente desde Coolify en el recurso existente, commit `032841aab371114a7745ff64387ac581b8641020`, rama `deploy/backend-pos`. Despliegue `e2vndegkkb2yvvx21dcsomed`, contenedor nuevo saludable y actualización gradual completada.
+
+Antes del cambio se creó una copia SQLite consistente en `/data/backups/pos-2026-11-10T21-01-11.077Z.sqlite`; también se descargó fuera del servidor a `output/production-backups/pos-before-032841a.sqlite` (excluido de Git). Se comprobó la integridad de esa copia.
+
+Se conservó el volumen `0sxtn0nojcnijnl1dxn7rmev-backend-pos-data` en `/data`. Después del despliegue: `PRAGMA integrity_check = ok`, las 14 tablas nuevas presentes y los conteos de usuarios, productos, clientes, ventas y cajas iguales a los registrados antes de actualizar. No se crearon operaciones de prueba en producción. `/health` respondió 200 y las rutas protegidas rechazaron consultas sin sesión con 401.
+
+La interfaz pública en Vercel sigue sin actualizar: el estado de despliegue del proyecto `venta-pos` reportó literalmente `Account is blocked.` La API publicada no sirve las pantallas web en `/`; para probar el cliente actualizado desde este computador puede usarse `EXPO_PUBLIC_API_URL=https://backend-pos.dromos.co npm run web -w mobile`, en `http://localhost:8097`. Ese cliente opera sobre la base real de producción.
