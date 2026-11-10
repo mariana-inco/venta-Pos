@@ -55,7 +55,7 @@ Estado: modelo documentado e integración definida; módulo Bluetooth, APK y pru
 
 Estado actual: PDF generados y revisados visualmente en 58/80 mm. Prueba de impresión física y Bluetooth no realizada: se indicó el modelo MTP-3 genérico, pero no hay acceso a la unidad física.
 
-Referencias: https://docs.expo.dev/versions/v57.0.0/sdk/print/ y https://docs.expo.dev/versions/latest/sdk/sharing/.
+Referencias: https://docs.expo.dev/versions/v58.0.0/sdk/print/ y https://docs.expo.dev/versions/latest/sdk/sharing/.
 
 ## Fuentes para la integración
 
@@ -63,3 +63,7 @@ Referencias: https://docs.expo.dev/versions/v57.0.0/sdk/print/ y https://docs.ex
 - [Permisos Bluetooth de Android](https://developer.android.com/develop/connectivity/bluetooth/bt-permissions).
 - [Biblioteca Android ESC/POS de DantSu](https://github.com/DantSu/ESCPOS-ThermalPrinter-Android).
 - [Development builds de Expo](https://docs.expo.dev/develop/development-builds/introduction/).
+
+## Actualización Neotek H10S
+
+El modelo objetivo confirmado es Neotek H10S Android 13. Ver [diagnóstico y límites de integración](ACTUALIZACION-H10S.md). El módulo Bluetooth existente no acredita compatibilidad con la impresora interna. El PDF por ruta conserva 58 mm físicos y altura dinámica; la impresión integrada requiere identificar el servicio Android o SDK del proveedor y verificar papel real.

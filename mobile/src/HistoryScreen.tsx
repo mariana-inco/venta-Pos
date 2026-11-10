@@ -9,7 +9,7 @@ import type {Run} from '../App';
 type Props = {user: User; settings: Settings; run: Run; busy: boolean; initialSale: Sale | null; initialClosure: Closure | null; sessionFilter: string; clearInitial: () => void; customers: Customer[]; sessions: CashSession[]};
 type Period = 'today' | 'yesterday' | 'week' | 'all' | 'range';
 const PERIODS: {id: Period; name: string}[] = [{id: 'today', name: 'Hoy'}, {id: 'yesterday', name: 'Ayer'}, {id: 'week', name: '7 días'}, {id: 'all', name: 'Todo'}, {id: 'range', name: 'Rango'}];
-const methodName = (s: {method?: string; platform_name?: string | null}) => s.method === 'cash' ? 'Efectivo' : s.platform_name || 'Electrónico';
+const methodName = (s: {method?: string; platform_name?: string | null}) => s.method === 'credit' ? 'Crédito' : s.method === 'cash' ? 'Efectivo' : s.platform_name || 'Electrónico';
 
 export function HistoryScreen({user, settings, run, busy, initialSale, initialClosure, sessionFilter, clearInitial, customers, sessions}: Props) {
   const admin = user.role === 'admin';
@@ -166,7 +166,7 @@ export function HistoryScreen({user, settings, run, busy, initialSale, initialCl
       </View>}
       {rangeError && <Text style={styles.fieldError}>{rangeError}</Text>}
       <View style={[styles.row, {alignItems: 'flex-start', gap: 8}]}>
-        <View style={{flex: 1}}><Choice items={[{id: '', name: 'Todo pago'}, {id: 'cash', name: 'Efectivo'}, {id: 'electronic', name: 'Electrónico'}]} value={method} onChange={setMethod}/></View>
+        <View style={{flex: 1}}><Choice items={[{id: '', name: 'Todo pago'}, {id: 'cash', name: 'Efectivo'}, {id: 'electronic', name: 'Electrónico'}, {id:'credit',name:'Crédito'}]} value={method} onChange={setMethod}/></View>
         <IconButton icon="sliders" label="Más filtros" onPress={() => setFilters(true)} tone={activeChips.length ? 'green' : 'gray'}/>
       </View>
       {activeChips.length > 0 && <View style={styles.wrap}>{activeChips.map(c => <Pressable key={c.key} accessibilityRole="button" accessibilityLabel={`Quitar filtro ${c.text}`} onPress={c.clear} style={[styles.chip, styles.chipOn]}><Text style={[styles.chipText, {color: 'white'}]}>{c.text}</Text><Feather name="x" size={14} color="white"/></Pressable>)}</View>}
@@ -176,7 +176,7 @@ export function HistoryScreen({user, settings, run, busy, initialSale, initialCl
           {admin && page.count > 0 && <Button title={showGroups ? 'Ocultar' : 'Totales'} icon="bar-chart-2" variant="ghost" size="sm" onPress={() => setShowGroups(!showGroups)}/>}</View>
         {showGroups && admin && <View style={{gap: 8}}>
           <Choice items={[{id: 'method', name: 'Pago'}, {id: 'platform', name: 'Plataforma'}, {id: 'seller', name: 'Vendedor'}, {id: 'customer', name: 'Cliente'}, {id: 'date', name: 'Fecha'}]} value={group} onChange={setGroup}/>
-          {page.groups[group]?.map((g, i) => <InfoRow key={i} label={`${group === 'customer' ? customerName(g.key || '') || g.key : group === 'seller' ? sellers.find(s => s.id === g.key)?.name || g.key : g.key === 'cash' ? 'Efectivo' : g.key === 'electronic' ? 'Electrónico' : g.key || 'Efectivo'} · ${g.count}`} value={cop(g.total_cents)}/>)}
+          {page.groups[group]?.map((g, i) => <InfoRow key={i} label={`${group === 'customer' ? customerName(g.key || '') || g.key : group === 'seller' ? sellers.find(s => s.id === g.key)?.name || g.key : g.key === 'credit'?'Crédito':g.key === 'cash' ? 'Efectivo' : g.key === 'electronic' ? 'Electrónico' : g.key || 'Efectivo'} · ${g.count}`} value={cop(g.total_cents)}/>)}
         </View>}
       </Card>}
 
@@ -190,7 +190,7 @@ export function HistoryScreen({user, settings, run, busy, initialSale, initialCl
               <Text style={{fontSize: 15, fontWeight: '800', color: colors.ink}}>Venta {receiptNumber(s.number)}</Text>
               <Text numberOfLines={1} style={styles.small}>{time(s.created_at)} · {s.snapshot.customer_name}{admin ? ` · ${s.snapshot.seller_name}` : ''}</Text>
             </View>
-            <View style={{alignItems: 'flex-end', gap: 4}}><Text style={[styles.money, {fontSize: 15}]}>{cop(s.total_cents)}</Text><Badge text={methodName(s)} tone={s.method === 'cash' ? 'green' : 'gray'}/></View>
+            <View style={{alignItems: 'flex-end', gap: 4}}><Text style={[styles.money, {fontSize: 15}]}>{cop(s.total_cents)}</Text>{s.state==='ANULADA'&&<Badge text="ANULADA" tone="orange"/>}<Badge text={methodName(s)} tone={s.method === 'cash' ? 'green' : 'gray'}/></View>
           </Pressable>)}
         </View>
       </Section>)}

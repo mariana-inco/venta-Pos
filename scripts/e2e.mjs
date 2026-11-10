@@ -22,7 +22,7 @@ let browser,page;
 try{
  execFileSync('npm',['exec','-w','mobile','--','expo','export','--clear','--platform','web','--output-dir',join(directory,'web')],{cwd:root,env:{...process.env,EXPO_PUBLIC_API_URL:origin},stdio:'pipe'});
  const login=await fetch(origin+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:admin.username,password})});const {token}=await login.json();
- async function call(path,body){const r=await fetch(origin+'/api'+path,{method:body?'POST':'GET',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:body&&JSON.stringify(body)});if(!r.ok)throw new Error(await r.text());return r.json();}
+ async function call(path,body,method=body?'POST':'GET'){const r=await fetch(origin+'/api'+path,{method,headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:body&&JSON.stringify(body)});if(!r.ok)throw new Error(await r.text());return r.json();}
  // Ejemplo del negocio: pollo por kg y gaseosa por unidad con stock controlado.
  await call('/products',{name:'Pollo',price:'12000',unit:'kg'});await call('/products',{name:'Gaseosa',price:'4000',unit:'unit',stock:'10'});
  await call('/products',{name:'Queso campesino',price:'24000',unit:'kg'});await call('/products',{name:'Chorizo santarrosano artesanal ahumado extra picante de la casa x 500 g',price:'18500',unit:'unit'});
@@ -51,14 +51,14 @@ try{
  // Apertura de caja con monto inicial colombiano.
  await id('open-cash-home').click();await id('opening-amount').fill('50.000');await id('open-cash').click();await expect(id('own-session')).toBeVisible();await expect(id('own-session')).toContainText('$ 50.000');await capture('caja-abierta');
  // Venta: cliente, kg decimales y unidades.
- await id('tab-sale').click();await capture('vender-catalogo');
+ await id('tab-sale').click();await expect(id('add-Pollo')).toHaveCount(0);await capture('vender-catalogo');
  await id('customer-picker').click();await page.getByRole('button',{name:'Ana, Bogotá'}).click();await expect(id('customer-picker')).toContainText('Ana');
  await id('product-search').fill('pol');await id('add-Pollo').click();await id('quantity-input').fill('125,5');await expect(id('quantity-save')).toContainText('1.506.000');await id('quantity-save').click();
- await page.getByRole('button',{name:'Borrar búsqueda'}).click();for(let i=0;i<3;i++)await id('add-Gaseosa').click();
+ await id('product-search').fill('Gaseosa');await id('add-Gaseosa').click();await id('quantity-input').fill('3');await id('quantity-save').click();
  if(!(await total()).includes('1.518.000'))throw new Error('Total esperado $ 1.518.000, obtenido '+await total());
  // Decimales con punto, coma y valores sin error de punto flotante (1,1 kg).
- await id('add-Queso campesino').click();for(const [q,v] of [['0,25','6.000'],['0.5','12.000'],['1,1','26.400'],['2,3','55.200']]){await id('quantity-input').fill(q);await expect(id('quantity-save')).toContainText(v);}await id('quantity-save').click();
- await id('add-Chorizo santarrosano artesanal ahumado extra picante de la casa x 500 g').click();
+ await id('product-search').fill('Queso');await id('add-Queso campesino').click();for(const [q,v] of [['0,25','6.000'],['0.5','12.000'],['1,1','26.400'],['2,3','55.200']]){await id('quantity-input').fill(q);await expect(id('quantity-save')).toContainText(v);}await id('quantity-save').click();
+ await id('product-search').fill('Chorizo');await id('add-Chorizo santarrosano artesanal ahumado extra picante de la casa x 500 g').click();await id('quantity-save').click();
  // Modificación del carrito: sumar, restar, editar y quitar.
  await id('sale-tabs').getByRole('tab',{name:/En la venta/}).click();await capture('vender-carrito');
  await page.getByRole('button',{name:'Sumar Unidades de Gaseosa'}).click();await expect(id('qty-Gaseosa')).toHaveValue('4');await page.getByRole('button',{name:'Restar Unidades de Gaseosa'}).click();await expect(id('qty-Gaseosa')).toHaveValue('3');
@@ -76,7 +76,7 @@ try{
  await id('sale-view-receipt').click();await expect(id('receipt-preview')).toBeVisible();await expect(id('receipt-preview')).toContainText('Venta #0001');await expect(id('receipt-preview')).toContainText('125,5 kg');await expect(id('receipt-preview')).toContainText('No es factura electrónica.');await capture('comprobante');
  const download=page.waitForEvent('download');await id('receipt-pdf').click();await(await download).saveAs(join(directory,'sale.pdf'));
  // Segunda venta en efectivo con cálculo de cambio.
- await id('tab-sale').click();await id('customer-picker').click();await page.getByRole('button',{name:'Ana, Bogotá'}).click();await id('add-Gaseosa').click();await id('checkout').click();await page.getByRole('radio',{name:'Efectivo'}).click();
+ await id('tab-sale').click();await id('customer-picker').click();await page.getByRole('button',{name:'Ana, Bogotá'}).click();await id('product-search').fill('Gaseosa');await id('add-Gaseosa').click();await id('quantity-save').click();await id('checkout').click();await page.getByRole('radio',{name:'Efectivo'}).click();
  await id('cash-received').fill('10.000');await expect(id('cash-change')).toContainText('6.000');await id('confirm-sale').click();await expect(id('sale-done')).toContainText('Cambio para el cliente');
  // Historial con filtros y persistencia tras recarga.
  await id('tab-history').click();await expect(id('sale-row-1')).toBeVisible();await expect(id('history-total')).toContainText('1.522.000');await capture('historial');
@@ -95,6 +95,27 @@ try{
  await id('review-close').click();await page.getByRole('button',{name:'Confirmar cierre definitivo'}).click();await expect(id('closure-detail')).toBeVisible();await expect(page.getByText('Cierre #0001')).toBeVisible();await capture('cierre');
  await page.getByRole('button',{name:'Ver ventas incluidas'}).click();await expect(id('sale-row-1')).toBeVisible();
  await id('tab-catalog').click();await id('catalog-Gaseosa').click();await expect(id('catalog-stock')).toHaveValue('6');await capture('catalogo-editar');
+ // Integrated route journey: code terminators, KG/UND, shared stock and seller collections.
+ await page.getByRole('button',{name:'Cerrar',exact:true}).last().click();
+ const route=await call('/routes',{name:'Ruta E2E'});
+ const seller=(await call('/users')).find(u=>u.username==='seller-test');
+ await call(`/routes/${route.id}/sellers/${seller.id}`,{},'PUT');
+ const ana=(await call('/customers')).find(c=>c.name==='Ana');await call(`/routes/${route.id}/customers/${ana.id}`,{identification:'001234'},'PUT');
+ const routeProducts=await call('/products');
+ for(const [name,code,unit] of [['Pollo','0001','kg'],['Gaseosa','1001','unit']]){
+  const p=routeProducts.find(p=>p.name===name);await call(`/products/${p.id}`,{name:p.name,price:String(p.price_cents/100),unit,stock:p.stock_milli===null?null:String(p.stock_milli/1000),codes:[{code,kind:'barcode'}]},'PUT');
+  const g=await call('/inventory-groups',{name:'Inventario '+name,unit});await call(`/products/${p.id}/group`,{group_id:g.id},'PUT');await call('/inventory',{route_id:route.id,group_id:g.id,quantity:'500',kind:'assign',note:'Carga E2E',expected_available_milli:0});
+ }
+ await page.getByRole('button',{name:'Rutas y abonos',exact:true}).click();await page.getByRole('button',{name:'Inventario',exact:true}).click();await expect(page.getByText('Disponible: 500 kg')).toBeVisible();await capture('inventario-ruta');
+ await id('profile-button').click();await id('logout').click();await page.getByRole('button',{name:'Cerrar sesión'}).last().click();await signIn('seller-test');
+ await id('open-cash-home').click();await id('opening-amount').fill('0');await id('open-cash').click();await expect(id('own-session')).toBeVisible();await id('tab-sale').click();
+ await expect(id('add-Pollo')).toHaveCount(0);await id('customer-picker').click();await page.getByRole('button',{name:'Ana, Bogotá'}).click();
+ await id('product-search').fill('0001');await expect(id('product-search')).toBeFocused();await id('product-search').press('Enter');await expect(page.getByLabel('Peso en kilogramos')).toBeVisible();await id('quantity-input').fill('2,5');await id('quantity-save').click();
+ await id('product-search').fill('1001');await expect(id('product-search')).toBeFocused();await id('product-search').press('Enter');await expect(page.getByLabel('Cantidad en unidades')).toBeVisible();await id('quantity-input').fill('5');await id('quantity-save').click();
+ await capture('venta-ruta-resumen');await id('checkout').click();await page.getByRole('switch',{name:'Venta a crédito'}).click();await page.getByLabel('Abono inicial (opcional)').fill('5.000');await page.getByRole('radio',{name:'Efectivo'}).click();await id('confirm-sale').click();await expect(id('sale-done')).toContainText('PAGO PARCIAL');await expect(id('sale-done')).toContainText('45.000');
+ await page.getByRole('button',{name:'Rutas y abonos',exact:true}).click();await page.getByRole('button',{name:'Ana',exact:true}).click();await expect(page.getByText('Saldo pendiente: $ 45.000')).toBeVisible();await page.getByLabel('Valor del abono').fill('15.000');await page.getByRole('button',{name:'REGISTRAR ABONO',exact:true}).click();await expect(page.getByText('Saldo pendiente: $ 30.000')).toBeVisible();await capture('abonos-vendedor');
+ await page.getByLabel('Valor del abono').fill('30.000');await page.getByRole('button',{name:'REGISTRAR ABONO',exact:true}).click();await expect(page.getByText('Saldo pendiente: $ 0')).toBeVisible();await expect(page.getByText(/Factura #3 · PAGADA/)).toBeVisible();
+ console.log('E2E rutas: inventario administrativo, recepción por teclado con Enter y ceros iniciales, venta a crédito, abonos desde vendedor y factura pagada verificados.');
  if(errors.length)throw new Error(errors.join('\n'));
  console.log(`E2E móvil web: login, apertura, venta kg/unidades/decimales, carrito, cliente en flujo, doble clic sin duplicar, stock, comprobante y PDF, cambio en efectivo, filtros, recarga, logout, datos fiscales y cierre verificados. Capturas en ${WIDTHS.join(', ')} px.`);
 }catch(error){if(page)await page.screenshot({path:join(shots,'fallo.png'),fullPage:true}).catch(()=>{});throw error;}finally{if(browser)await browser.close();await new Promise(r=>server.close(r));db.close();rmSync(directory,{recursive:true,force:true});}

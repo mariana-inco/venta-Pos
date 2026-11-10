@@ -1,3 +1,4 @@
+import {routeFor,productsFor} from './commerce.js';
 import {randomBytes} from 'node:crypto';
 import {z} from 'zod';
 import {digest,authenticate,admin,publicUser} from './auth.js';
@@ -37,12 +38,12 @@ export function authenticateDevice(db){return (req,res,next)=>{
 };}
 export function catalogFor(db,user,deviceId){
  return transaction(db,()=>{
-  const payload={settings:db.prepare('SELECT * FROM settings WHERE id=1').get(),products:db.prepare('SELECT * FROM products ORDER BY id').all().map(p=>({...p,stock_milli:p.stock_milli===null?null:p.stock_milli-(db.prepare('SELECT quantity_milli FROM stock_debts WHERE product_id=?').get(p.id)?.quantity_milli||0)})),platforms:db.prepare('SELECT * FROM platforms ORDER BY id').all()};
+  const payload={settings:db.prepare('SELECT * FROM settings WHERE id=1').get(),route:routeFor(db,user),products:productsFor(db,user,true),platforms:db.prepare('SELECT * FROM platforms ORDER BY id').all()};
   const serialized=canonical(payload),version=digest(serialized);
   db.prepare('INSERT OR IGNORE INTO catalog_versions VALUES (?,?,?)').run(version,serialized,now());
   db.prepare('INSERT OR IGNORE INTO device_catalogs VALUES (?,?)').run(deviceId,version);
   db.prepare('UPDATE sync_devices SET last_seen_at=? WHERE id=?').run(now(),deviceId);
-  return {...payload,version,user,customers:db.prepare('SELECT * FROM customers ORDER BY name').all(),ack_sequence:db.prepare('SELECT last_sequence FROM sync_devices WHERE id=?').get(deviceId).last_sequence,server_time:now()};
+  return {...payload,version,user,customers:db.prepare('SELECT * FROM customers ORDER BY name').all().filter(c=>user.role==='admin'||!routeFor(db,user)||db.prepare('SELECT 1 FROM customer_routes WHERE customer_id=? AND route_id=?').get(c.id,routeFor(db,user).id)),ack_sequence:db.prepare('SELECT last_sequence FROM sync_devices WHERE id=?').get(deviceId).last_sequence,server_time:now()};
  });
 }
 export function ingestEvent(db,user,deviceId,raw){
@@ -70,6 +71,7 @@ export function ingestEvent(db,user,deviceId,raw){
 }
 function applyEvent(db,user,deviceId,event){
  const d=event.data;
+ if(event.type==='sale.create'&&routeFor(db,user))fail(409,'Las ventas por ruta requieren confirmación en línea para proteger el inventario compartido.');
  if(event.type==='customer.create'){
   db.prepare('INSERT INTO customers VALUES (?,?,?,?,?,?)').run(event.id,d.name,d.city,1,event.created_at,event.created_at);
   audit(db,user.id,'customer.create',event.id,{device_id:deviceId});

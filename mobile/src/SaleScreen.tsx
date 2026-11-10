@@ -1,18 +1,19 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react';
-import {Platform, Pressable, Text, View} from 'react-native';
+import {Platform, Pressable, Text, View, TextInput, Switch} from 'react-native';
 import {Feather} from '@expo/vector-icons';
 import * as Crypto from 'expo-crypto';
 import {api, ApiError, documentAction, readPending, savePending} from './api';
 import {Badge, Banner, Button, Card, Choice, Empty, Field, FooterBar, IconButton, Loading, Page, SearchBar, Segmented, Sheet, Stepper, colors, cop, fitSize, lineSubtotal, moneyToCents, normalizeSearch, parseQuantity, quantityForApi, quantityLabel, quantityText, receiptNumber, styles, unitLabel, useBack} from './ui';
 import type {CashSession, Product, Customer, Platform as PayPlatform, CartLine, Sale} from './types';
+import {enableScanner,onBarcode} from './scanner';
 import type {Run} from '../App';
-type Props = {userId: string; active: boolean; session?: CashSession; products: Product[]; customers: Customer[]; platforms: PayPlatform[]; paperWidth: 58 | 80; refresh: () => Promise<void>; run: Run; busy: boolean; onViewSale: (sale: Sale) => void; onOpenCash: () => void};
+type Props = {route?:{id:string;name:string}|null;userId: string; active: boolean; session?: CashSession; products: Product[]; customers: Customer[]; platforms: PayPlatform[]; paperWidth: 58 | 80; refresh: () => Promise<void>; run: Run; busy: boolean; onViewSale: (sale: Sale) => void; onOpenCash: () => void};
 type SaleView = 'catalog' | 'cart' | 'pay';
 const KG_PRESETS = ['0,25', '0,5', '1', '1,5', '2', '3'];
 const UNIT_PRESETS = ['1', '2', '3', '6', '12', '24'];
 const PAGE = 30;
 
-export function SaleScreen({userId, active, session, products, customers, platforms, paperWidth, refresh, run, busy, onViewSale, onOpenCash}: Props) {
+export function SaleScreen({route,userId, active, session, products, customers, platforms, paperWidth, refresh, run, busy, onViewSale, onOpenCash}: Props) {
   const [cart, setCart] = useState<CartLine[]>([]), [query, setQuery] = useState(''), [limit, setLimit] = useState(PAGE), [view, setView] = useState<SaleView>('catalog');
   const [customer, setCustomer] = useState(''), [pickCustomer, setPickCustomer] = useState(false), [customerSearch, setCustomerSearch] = useState(''), [newCustomer, setNewCustomer] = useState(false), [name, setName] = useState(''), [city, setCity] = useState('');
   const [editing, setEditing] = useState<Product | null>(null), [qtyText, setQtyText] = useState('');
@@ -20,6 +21,12 @@ export function SaleScreen({userId, active, session, products, customers, platfo
   const [ready, setReady] = useState(false), [pending, setPending] = useState<Record<string, unknown> | null>(null), [done, setDone] = useState<{sale: Sale; change: number | null} | null>(null);
   // Bloqueo síncrono: un doble toque no alcanza a crear dos ventas aunque React aún no haya deshabilitado el botón.
   const confirming = useRef(false);
+  const [scanMessage,setScanMessage]=useState('');
+  useEffect(()=>{void enableScanner(active).catch(e=>setScanMessage(e.message));return ()=>{void enableScanner(false).catch(()=>{});};},[active]);
+  useEffect(()=>{const subscription=onBarcode(code=>{if(!active)return;if(editing||pickCustomer||view==='pay'||done||pending){setScanMessage('Confirma o cierra el formulario actual antes de escanear el siguiente producto.');return;}const p=products.find(p=>p.active&&p.codes?.some(c=>c.code.toLowerCase()===code.trim().toLowerCase()));if(p){setScanMessage('');setView('catalog');openQuantity(p);}else{setQuery(code);setScanMessage(`No hay un producto con el código ${code}.`);}});return ()=>subscription?.remove();},[active,editing,pickCustomer,view,done,pending,products,cart]);
+  const searchInput=useRef<React.ComponentRef<typeof TextInput>>(null);
+  const [credit,setCredit]=useState(false),[initialPayment,setInitialPayment]=useState('');
+  useEffect(()=>{if(active&&view==='catalog'&&!editing&&!pickCustomer&&!done){const timer=setTimeout(()=>searchInput.current?.focus(),350);return ()=>clearTimeout(timer);}},[active,view,editing,pickCustomer,done]);
   useEffect(() => { run(async () => { setPending(await readPending(userId)); setReady(true); }); }, [userId]);
   // Al actualizar el catálogo, el carrito toma precios y existencias vigentes (la API rechaza precios desactualizados).
   useEffect(() => { setCart(lines => lines.map(l => ({...l, product: products.find(p => p.id === l.product.id) || l.product}))); }, [products]);
@@ -34,7 +41,8 @@ export function SaleScreen({userId, active, session, products, customers, platfo
   const selectedCustomer = customers.find(c => c.id === customer);
   const lines = cart.map(l => {
     const milli = parseQuantity(l.quantity, l.product.unit);
-    const short = milli !== null && l.product.stock_milli !== null && milli > l.product.stock_milli;
+    const groupTotal=cart.filter(c=>l.product.group_id?c.product.group_id===l.product.group_id:c.product.id===l.product.id).reduce((n,c)=>n+(parseQuantity(c.quantity,c.product.unit)||0),0);
+    const short = milli !== null && l.product.stock_milli !== null && groupTotal > l.product.stock_milli;
     return {...l, milli, short, subtotal: milli ? lineSubtotal(l.product.price_cents, milli) : 0};
   });
   const total = lines.reduce((sum, l) => sum + l.subtotal, 0);
@@ -42,12 +50,15 @@ export function SaleScreen({userId, active, session, products, customers, platfo
   const method = pay === 'cash' ? 'cash' : pay ? 'electronic' : '';
   const receivedCents = received.trim() ? moneyToCents(received) : null;
   const receivedError = method === 'cash' && received.trim() ? (receivedCents === null ? 'Escribe un valor válido, por ejemplo 50.000' : receivedCents < total ? `Faltan ${cop(total - receivedCents)}` : null) : null;
-  const valid = !!session && !!customer && linesOk && !!method && !receivedError;
+  const initialCents=initialPayment.trim()?moneyToCents(initialPayment):0;
+  const valid = !!session && !!customer && linesOk && !!method && (credit?initialCents!==null&&initialCents>=0&&initialCents<=total:!receivedError);
   const inCart = (id: string) => lines.find(l => l.product.id === id);
 
   const visible = useMemo(() => {
     const q = normalizeSearch(query);
-    return products.filter(p => p.active && (!q || normalizeSearch(p.name).includes(q)));
+    if(!q)return [];
+    const exact=products.filter(p=>p.active&&p.codes?.some(c=>normalizeSearch(c.code)===q));if(exact.length)return exact;
+    return products.filter(p => p.active && (normalizeSearch(p.name).includes(q)||p.codes?.some(c=>normalizeSearch(c.code).includes(q))));
   }, [products, query]);
   const customerMatches = useMemo(() => {
     const q = normalizeSearch(customerSearch);
@@ -63,27 +74,22 @@ export function SaleScreen({userId, active, session, products, customers, platfo
     const current = parseQuantity(line.quantity, unit) || 0;
     setLine(line.product, quantityText(Math.max(delta, current + direction * delta)));
   }
-  /** Unidades: un toque suma 1. Peso: abre la hoja para escribir los kilos. */
-  function quickAdd(product: Product) {
-    const line = inCart(product.id);
-    if (product.unit === 'unit') setLine(product, quantityText((line?.milli || 0) + 1000));
-    else openQuantity(product);
-  }
+  function quickAdd(product:Product){openQuantity(product);}
+  function scan(){const code=query.trim().toLowerCase();const p=products.find(p=>p.active&&p.codes?.some(c=>c.code.toLowerCase()===code));if(p)openQuantity(p);}
   function openQuantity(product: Product) {
-    const line = inCart(product.id);
-    setEditing(product); setQtyText(line ? line.quantity : product.unit === 'unit' ? '1' : '');
+    setEditing(product); setQtyText(product.unit === 'unit' ? '1' : '');
   }
   const editMilli = editing ? parseQuantity(qtyText, editing.unit) : null;
-  const editShort = editing && editMilli !== null && editing.stock_milli !== null && editMilli > editing.stock_milli;
-  function saveQuantity() { if (editing && editMilli !== null && !editShort) { setLine(editing, quantityText(editMilli)); setEditing(null); } }
+  const editShort = editing && editMilli !== null && editing.stock_milli !== null && editMilli + cart.filter(l=>editing.group_id?l.product.group_id===editing.group_id:l.product.id===editing.id).reduce((n,l)=>n+(parseQuantity(l.quantity,l.product.unit)||0),0)> editing.stock_milli;
+  function saveQuantity() { if (editing && editMilli !== null && !editShort) { setLine(editing, quantityText(editMilli+(inCart(editing.id)?.milli||0))); setEditing(null);setQuery(''); } }
 
-  function reset() { setCart([]); setPay(''); setReceived(''); setView('catalog'); setQuery(''); setCustomer(''); setLimit(PAGE); }
+  function reset() {setCredit(false);setInitialPayment(''); setCart([]); setPay(''); setReceived(''); setView('catalog'); setQuery(''); setCustomer(''); setLimit(PAGE); }
   async function confirm() {
     if (confirming.current) return;
     if (!valid && !pending) throw new Error('Completa el cliente, las cantidades y el método de pago antes de confirmar.');
     confirming.current = true;
     try {
-      const body = pending || {session_id: session!.id, customer_id: customer, items: lines.map(l => ({product_id: l.product.id, quantity: quantityForApi(l.milli!), expected_price_cents: l.product.price_cents})), method, platform_id: method === 'electronic' ? pay : null, request_key: Crypto.randomUUID()};
+      const body = pending || {cash_received:!credit&&method==='cash'&&receivedCents!==null?String(receivedCents/100):undefined,credit,initial_payment:credit?String((initialCents||0)/100):undefined,session_id: session!.id, customer_id: customer, items: lines.map(l => ({product_id: l.product.id, quantity: quantityForApi(l.milli!), expected_price_cents: l.product.price_cents})), method, platform_id: method === 'electronic' ? pay : null, request_key: Crypto.randomUUID()};
       // La referencia se guarda antes de enviar: si se cae la conexión, el reintento no duplica la venta.
       await savePending(userId, body); setPending(body);
       let sale: Sale;
@@ -110,8 +116,9 @@ export function SaleScreen({userId, active, session, products, customers, platfo
         <Text style={styles.muted}>Venta {receiptNumber(sale.number)} · {sale.snapshot.customer_name}</Text>
       </View>
       <Card style={{alignItems: 'center', gap: 4}}>
-        <Text style={styles.small}>Total cobrado</Text>
+        <Text style={styles.small}>Total de la factura</Text>
         <Text testID="done-total" style={[styles.metric, {fontSize: 34, color: colors.green}]}>{cop(sale.total_cents)}</Text>
+        {sale.snapshot.credit&&<Text style={styles.h2}>{sale.state} · Saldo {cop(sale.balance_cents||0)}</Text>}
         <Badge text={p?.method === 'cash' ? 'Efectivo' : p?.platform_name || 'Electrónico'} tone="gray"/>
         {change !== null && change > 0 && <View style={{marginTop: 8, alignItems: 'center'}}><Text style={styles.small}>Cambio para el cliente</Text><Text style={[styles.metric, {color: colors.orange}]}>{cop(change)}</Text></View>}
       </Card>
@@ -146,7 +153,7 @@ export function SaleScreen({userId, active, session, products, customers, platfo
           <Text style={styles.small}>{cart.length === 0 ? 'Sin productos' : `${cart.length} ${cart.length === 1 ? 'producto' : 'productos'} · ver`}</Text>
           <Text testID="sale-total" numberOfLines={1} style={[styles.metric, {color: colors.green, fontSize: fitSize(cop(total), 22, 9)}]}>{cop(total)}</Text>
         </Pressable>
-        <Button title="Cobrar" icon="arrow-right" size="lg" style={{flexShrink: 0, paddingHorizontal: 22}} disabled={!linesOk} onPress={() => setView('pay')} testID="checkout"/>
+        <Button title="GENERAR FACTURA" icon="arrow-right" size="lg" style={{flexShrink: 1, paddingHorizontal: 12}} disabled={!linesOk} onPress={() => setView('pay')} testID="checkout"/>
       </FooterBar>;
 
   const customerCard = <Card onPress={() => { setPickCustomer(true); setCustomerSearch(''); setNewCustomer(false); }} testID="customer-picker" style={{paddingVertical: 12}}>
@@ -162,10 +169,12 @@ export function SaleScreen({userId, active, session, products, customers, platfo
 
   return <>
     <Page footer={footer} testID="sale-screen">
+      {!!scanMessage&&<Banner tone="orange" text={scanMessage} onClose={()=>setScanMessage('')}/>}
       {view === 'pay' ? <>
         <Pressable accessibilityRole="button" onPress={() => setView('catalog')} style={[styles.row, {justifyContent: 'flex-start', gap: 6}]} hitSlop={8}><Feather name="arrow-left" size={18} color={colors.green}/><Text style={styles.link}>Seguir agregando productos</Text></Pressable>
         <Text accessibilityRole="header" style={styles.title}>Cobrar</Text>
         {customerCard}
+        {route&&<Card><View style={styles.row}><Text style={styles.label}>Venta a crédito</Text><Switch accessibilityLabel="Venta a crédito" value={credit} onValueChange={setCredit}/></View>{credit&&<Field label="Abono inicial (opcional)" kind="decimal" value={initialPayment} onChange={setInitialPayment} error={initialCents===null||initialCents>total?'El abono debe estar entre cero y el total':null}/>}</Card>}
         {!customer && <Text style={[styles.small, {color: colors.orange, marginTop: -8}]}>Elige el cliente para poder confirmar.</Text>}
         <Card>
           <View style={styles.row}><Text style={styles.sectionTitle}>Resumen</Text><Pressable onPress={() => setView('cart')} hitSlop={8}><Text style={styles.link}>Editar</Text></Pressable></View>
@@ -187,7 +196,7 @@ export function SaleScreen({userId, active, session, products, customers, platfo
               </Pressable>;
             })}
           </View>
-          {method === 'cash' && <View style={{gap: 10}}>
+          {method === 'cash' && !credit && <View style={{gap: 10}}>
             <Field label="¿Con cuánto paga? (opcional)" kind="decimal" prefix="$" value={received} onChange={setReceived} placeholder={cop(total).replace('$', '').trim()} error={receivedError} testID="cash-received"/>
             <Choice items={cashSuggestions(total).map(v => ({id: String(v), name: v === total ? 'Exacto' : cop(v)}))} value={receivedCents !== null ? String(receivedCents) : ''} onChange={v => setReceived(String(Number(v) / 100))}/>
             {receivedCents !== null && !receivedError && <Card tone={receivedCents > total ? 'yellow' : 'green'} style={{paddingVertical: 12}}><View style={styles.row}><Text style={[styles.h2, {fontSize: 15}]}>Cambio a entregar</Text><Text testID="cash-change" style={[styles.metric, {color: colors.ink}]}>{cop(receivedCents - total)}</Text></View></Card>}
@@ -196,14 +205,15 @@ export function SaleScreen({userId, active, session, products, customers, platfo
         </Card>
         <Text style={[styles.small, {textAlign: 'center'}]}>Al confirmar, el sistema verifica precios, existencias y caja, y genera el comprobante.</Text>
       </> : <>
+        {route&&<Banner tone="gray" text={`Ruta: ${route.name}. Confirmación de ventas y abonos con conexión.`}/>}
         {customerCard}
         <Segmented items={[{id: 'catalog', name: 'Productos'}, {id: 'cart', name: `En la venta${cart.length ? ` (${cart.length})` : ''}`}]} value={view} onChange={v => setView(v as SaleView)} testID="sale-tabs"/>
         {view === 'catalog' ? <>
           <View style={[styles.row, {gap: 8}]}>
-            <View style={{flex: 1}}><SearchBar value={query} onChange={t => { setQuery(t); setLimit(PAGE); }} placeholder="Buscar producto" testID="product-search"/></View>
+            <View style={{flex: 1}}><TextInput ref={searchInput} value={query} onChangeText={t=>{setQuery(t);setLimit(PAGE);}} onSubmitEditing={scan} onKeyPress={e=>{if(e.nativeEvent.key==='Enter')scan();}} submitBehavior="submit" blurOnSubmit={false} autoCorrect={false} autoCapitalize="none" placeholder="Buscar producto por nombre o escanear código" accessibilityLabel="Buscar producto por nombre o escanear código" testID="product-search" style={{backgroundColor:colors.white,borderColor:colors.line,borderWidth:1,borderRadius:12,padding:12,minHeight:50}}/></View>
             <IconButton icon="refresh-cw" label="Actualizar precios y existencias" onPress={() => run(refresh, 'Precios actualizados')} disabled={busy}/>
           </View>
-          {visible.length === 0 && <Empty icon="search" title={products.length ? 'Sin resultados' : 'Aún no hay productos'} text={products.length ? `No encontramos “${query}”. Revisa la escritura.` : 'Un administrador debe crear productos en Catálogo.'}/>}
+          {visible.length === 0 && (cart.length===0||!!query.trim()) && <Empty icon="search" title={!query?'Buscar o escanear':products.length?'Sin resultados':'Aún no hay productos'} text={!query?'Escribe un nombre o lee un código para agregar productos.':`No encontramos “${query}”. Revisa la escritura.`}/>}
           <View style={{gap: 8}}>
             {visible.slice(0, limit).map(p => {
               const line = inCart(p.id), out = p.stock_milli === 0;
@@ -215,14 +225,16 @@ export function SaleScreen({userId, active, session, products, customers, platfo
                     <Text style={[styles.money, {fontSize: 14, color: colors.greenDark}]}>{cop(p.price_cents)}<Text style={styles.small}>/{p.unit === 'kg' ? 'kg' : 'und'}</Text></Text>
                     {p.stock_milli !== null && <Text style={[styles.small, {color: out ? colors.red : p.stock_milli <= (p.unit === 'kg' ? 2000 : 5000) ? colors.orange : colors.muted}]}>{out ? 'Agotado' : `Quedan ${quantityLabel(p.stock_milli, p.unit)}`}</Text>}
                   </View>
+                  <Text style={styles.small}>{p.codes?.map(c=>c.code).join(' · ')||'Sin código'}</Text>
                   {line && <Badge text={`En la venta: ${line.milli ? quantityLabel(line.milli, p.unit) : line.quantity}`} icon="check"/>}
                 </View>
-                <IconButton icon={p.unit === 'kg' ? 'edit-3' : 'plus'} label={`Agregar ${p.name}`} tone="solid" size={46} disabled={out} onPress={() => quickAdd(p)} testID={`add-${p.name}`}/>
+                <Button title="AGREGAR" size="sm" disabled={out} onPress={() => quickAdd(p)} testID={`add-${p.name}`}/>
               </Pressable>;
             })}
           </View>
           {visible.length > limit && <Button title={`Ver más productos (${visible.length - limit})`} variant="outline" onPress={() => setLimit(limit + PAGE)}/>}
-        </> : <>
+        </> : null}
+          <Text style={styles.sectionTitle}>RESUMEN DE VENTA</Text>
           {lines.length === 0 && <Empty icon="shopping-cart" title="La venta está vacía" text="Busca un producto y tócalo para agregarlo." action="Ver productos" onAction={() => setView('catalog')}/>}
           {lines.map(l => <Card key={l.product.id} style={{gap: 10, paddingVertical: 12}}>
             <View style={[styles.row, {alignItems: 'flex-start'}]}>
@@ -237,13 +249,12 @@ export function SaleScreen({userId, active, session, products, customers, platfo
             {l.short && <Text style={styles.fieldError}>Solo hay {quantityLabel(l.product.stock_milli!, l.product.unit)} disponibles</Text>}
           </Card>)}
           {lines.length > 0 && <Button title="Vaciar venta" icon="x" variant="ghost" onPress={() => setCart([])} style={{alignSelf: 'center'}}/>}
-        </>}
       </>}
     </Page>
 
-    <Sheet visible={!!editing} onClose={() => setEditing(null)} title={editing?.name || ''} subtitle={editing ? `${cop(editing.price_cents)} por ${editing.unit === 'kg' ? 'kilogramo' : 'unidad'}` : ''}
+    <Sheet visible={!!editing} onClose={() => setEditing(null)} title={editing?.name || ''} subtitle={editing ? `${cop(editing.price_cents)} · ${editing.unit === 'kg'?'¿Cuántos kilogramos desea vender?':'¿Cuántas unidades desea agregar?'}` : ''}
       footer={editing && <>
-        <Button title={`${inCart(editing.id) ? 'Actualizar' : 'Agregar'} · ${cop(editMilli ? lineSubtotal(editing.price_cents, editMilli) : 0)}`} icon="check" size="lg" disabled={editMilli === null || !!editShort} onPress={saveQuantity} testID="quantity-save"/>
+        <Button title={`Agregar · ${cop(editMilli ? lineSubtotal(editing.price_cents, editMilli) : 0)}`} icon="check" size="lg" disabled={editMilli === null || !!editShort} onPress={saveQuantity} testID="quantity-save"/>
         {inCart(editing.id) && <Button title="Quitar de la venta" variant="ghost" onPress={() => { remove(editing.id); setEditing(null); }}/>}
       </>}>
       {editing && <>

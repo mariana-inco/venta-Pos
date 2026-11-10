@@ -76,6 +76,7 @@ export async function receiptPdf(sale,width=58) {
  const lines=[...businessHeader(s,L),{space:4},{rule:'solid'},
   {text:'COMPROBANTE DE VENTA',bold:true,align:'center',size:L.small+0.5},{text:`Venta ${(sale.snapshot.ticket_number || receiptNumber(sale.number))}`,bold:true,size:L.total,align:'center'},{rule:'solid'},
   {pair:['Fecha',dateOf(sale.created_at)],boldRight:true},{pair:['Hora',timeOf(sale.created_at)],boldRight:true},{pair:['Vendedor',s.seller_name],boldRight:true}];
+ if(s.route_name)lines.push({pair:['Ruta',s.route_name]});
  if(sale.session_number)lines.push({pair:['Caja',`#${sale.session_number}`],boldRight:true});
  lines.push({space:3},{pair:['Cliente',s.customer_name],boldRight:true},{pair:['Ciudad',s.customer_city],boldRight:true},{rule:'dash'},{pair:['PRODUCTO','VALOR'],bold:true,size:L.small},{rule:'dash'});
  for(const item of sale.items){
@@ -83,8 +84,11 @@ export async function receiptPdf(sale,width=58) {
   lines.push({text:item.name.toUpperCase(),bold:true},{pair:[`${qty(item.quantity_milli)} ${unit} × ${cop(item.price_cents)}${item.unit==='kg'?'/kg':''}`,cop(item.subtotal_cents)],boldRight:true},{space:3});
  }
  const count=sale.items.length;
- lines.push({rule:'double'},{pair:['TOTAL',cop(sale.total_cents)],bold:true,size:L.total},{rule:'double'},
+ lines.push({rule:'dash'},{pair:['Subtotal',cop(sale.total_cents)]},{rule:'double'},{pair:['TOTAL',cop(sale.total_cents)],bold:true,size:L.total},{rule:'double'},
   {pair:['Productos',String(count)]});
+ if(s.credit)lines.push({pair:['Venta a crédito','']},{pair:['Abono inicial',cop(s.initial_paid_cents||0)]},{pair:['Saldo al emitir',cop(s.initial_balance_cents||0)],bold:true},{text:(s.initial_balance_cents||0)===0?'PAGADA':s.initial_paid_cents?'PAGO PARCIAL':'PENDIENTE',bold:true});
+ if(s.cash_received_cents!==null&&s.cash_received_cents!==undefined)lines.push({pair:['Recibido',cop(s.cash_received_cents)]},{pair:['Cambio',cop(s.cash_change_cents||0)]});
+ if(s.credit&&!sale.payments.length)lines.push({pair:['Método de pago','CRÉDITO']});
  for(const p of sale.payments){
   lines.push({pair:['Método de pago',p.method==='cash'?'EFECTIVO':(p.platform_name||'ELECTRÓNICO').toUpperCase()],boldRight:true});
   if(p.method!=='cash')lines.push({pair:['','Pago electrónico'],size:L.small});

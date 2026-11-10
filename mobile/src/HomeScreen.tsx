@@ -14,6 +14,7 @@ export function HomeScreen({user, sessions, busy, run, refresh, go, onHistory, o
   const scope = admin ? sessions.filter(s => s.state === 'open') : own ? [own] : [];
   const sum = (key: 'total_cents' | 'cash_cents' | 'electronic_cents' | 'sale_count') => scope.reduce((n, s) => n + s[key], 0);
   const shortcuts = [
+    {name: 'Rutas y abonos', icon: 'credit-card' as const, onPress: () => go('operations')},
     {name: 'Caja', icon: 'inbox' as const, onPress: () => go('cash')},
     {name: 'Historial', icon: 'clock' as const, onPress: onHistory},
     {name: 'Productos', icon: 'package' as const, onPress: () => onCatalog('products')},

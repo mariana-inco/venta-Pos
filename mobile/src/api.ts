@@ -4,6 +4,8 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as Print from 'expo-print';
 import type {User} from './types';
+import {printerConfig,printText} from './printing/printer';
+import {ticketLines} from './printing/receipt';
 let token='';
 export {API_URL,ApiError} from './transport';
 import {API_URL,ApiError,remote} from './transport';
@@ -31,7 +33,7 @@ export async function forgetSession(){currentUser=null;token='';if(offlineEnable
 export async function signOut(){if(offlineEnabled){try{await remote('/auth/logout','POST',{},token,3000);}catch{}await forgetSession();return;}await api('/auth/logout','POST',{});await forgetSession();}
 /** Descarga el PDF guardado de la venta/cierre (nunca se recalcula) y lo abre, comparte o imprime. */
 export async function documentAction(path:string,width:58|80,action:'share'|'print'|'open'){
- if(offlineEnabled)return localDocument(path,width,action);
+ if(offlineEnabled&&!await api('/route'))return localDocument(path,width,action);
  const url=`${API_URL}/api${path}/pdf?width=${width}`;const name=`comprobante-${path.split('/').pop()?.slice(0,8)}-${width}mm.pdf`;
  if(Platform.OS==='web'){
   const response=await fetch(url,{headers:{Authorization:`Bearer ${token}`}});if(!response.ok)throw new ApiError('No se pudo descargar el comprobante. Inténtalo nuevamente.',response.status,`HTTP ${response.status} · GET ${path}/pdf`);
@@ -43,6 +45,7 @@ export async function documentAction(path:string,width:58|80,action:'share'|'pri
   if(action!=='print'||!window.open(uri,'_blank')){const a=document.createElement('a');a.href=uri;a.download=name;a.click();}
   setTimeout(()=>URL.revokeObjectURL(uri),60000);return;
  }
+ if(action==='print'&&await printerConfig()){const record=await api<any>(path);const config=await printerConfig();await printText(ticketLines(record,path.startsWith('/sales/')?'sale':'closure',config!.width).join('\n')+'\n');return;}
  const result=await FileSystem.downloadAsync(url,FileSystem.cacheDirectory+name,{headers:{Authorization:`Bearer ${token}`}});
  if(result.status!==200)throw new ApiError('No se pudo descargar el comprobante. Revisa la conexión e inténtalo nuevamente.',result.status,`HTTP ${result.status} · GET ${path}/pdf`);
  if(action==='print')await Print.printAsync({uri:result.uri});

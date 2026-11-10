@@ -19,7 +19,7 @@ El asistente vuelve a pedir los datos inválidos y mantiene la contraseña ocult
 
 ## Inicio local
 
-Desde esta carpeta, con Node 24:
+Desde esta carpeta, con Node 24.3 o superior de la rama 24 (Expo SDK 58). Usa npm y el `package-lock.json` de la raíz para instalar el monorepo:
 
 ```sh
 npm install
@@ -42,6 +42,10 @@ En `mobile/.env`, configura `EXPO_PUBLIC_API_URL` con la IP del servidor visible
 API: puerto **4317**. Expo: puerto **8097**. No se detienen otros procesos. Si un puerto está ocupado, cambia `PORT` y la URL del cliente, o pasa otro puerto a Expo y actualiza `CORS_ORIGINS`. Los scripts no despliegan ni modifican proyectos externos.
 
 El APK Android puede vender, abrir/cerrar caja, consultar historial e imprimir sin internet después del primer acceso y descarga del catálogo. Guarda las operaciones en SQLite local y las sincroniza periódicamente con identidad por dispositivo y por evento. La web requiere conexión. Consulta [Operación offline y sincronización](docs/OFFLINE.md) para reglas de caja, inventario, revocación, construcción del APK e impresión.
+
+Al actualizar desde SDK 57, reconstruye el APK para incorporar las nuevas dependencias nativas. Si conservas `mobile/android` generado con la versión anterior, regénéralo con `npm exec -w mobile -- expo prebuild --clean --platform android --no-install` antes de ejecutar `npm run build:android` con la URL de API configurada. Los cambios nativos propios se mantienen en `mobile/plugins` y `mobile/modules`.
+
+Para comprobar Expo desde la raíz, ejecuta `npm run doctor` (equivale a `npx expo-doctor mobile`). La app Expo vive en `mobile/`; no instales Expo en el `package.json` de la raíz ni mezcles npm con pnpm.
 
 ## Diseño y navegación
 
@@ -88,7 +92,7 @@ PDF_OUTPUT_DIR=../output/pdf npm test -w server
 
 Usa HTTPS y un proxy de confianza para acceso fuera del desarrollo local, limita permisos del directorio de datos y no publiques `.env`, bases ni respaldos. Ejecuta la API como un servicio persistente para uso diario; el celular no es el servidor. SQLite es apropiado para esta instalación centralizada de pequeño negocio; mayor escala requerirá migrar el repositorio de datos a PostgreSQL.
 
-El catálogo admite stock opcional: vacío desactiva control; un valor activa existencias y descuenta cada venta. Ajustes administrativos quedan en auditoría. No se implementan compras, impuestos, facturación electrónica, pagos mixtos ni anulaciones. Los recibos son comprobantes comerciales.
+El catálogo admite stock opcional: vacío desactiva control; un valor activa existencias y descuenta cada venta. Ajustes administrativos quedan en auditoría. No se implementan compras, impuestos, facturación electrónica ni pagos mixtos. La actualización por ruta incorpora crédito, abonos y anulaciones auditadas con las restricciones descritas en la guía H10S. Los recibos son comprobantes comerciales.
 
 ## Documentación
 
@@ -104,3 +108,12 @@ Incluye módulo Android Bluetooth Classic SPP/ESC-POS con selección de impresor
 `mobile/eas.json` incluye un perfil `preview` para APK Android y un perfil de producción. Con una cuenta Expo configurada, desde `mobile/`, se puede ejecutar `npx eas-cli build --platform android --profile preview`. Configura una API HTTPS accesible por el celular antes de construir. No se ejecutó una compilación remota ni se publicó la app en tiendas. El código JavaScript nativo puede verificarse localmente con `npm exec -w mobile -- expo export --platform android`.
 
 Construcción local del APK con JavaScript incluido: `EXPO_PUBLIC_API_URL=https://tu-api npm run build:android`. Para HTTP de prueba, añade `POS_ALLOW_HTTP=1`. El APK local usa firma de desarrollo; para distribución usa EAS. Detalles en `docs/OFFLINE.md`.
+
+## Rutas, cartera y Neotek H10S
+
+El acceso **Rutas y abonos** del encabezado permite configurar rutas/grupos de inventario, consultar existencias y registrar recaudos. Las ventas por ruta y los abonos requieren conexión para impedir sobreventas y exceso de pagos entre terminales. El catálogo admite varios códigos por producto y Vender muestra resultados únicamente al buscar o escanear.
+
+Consulta [actualización, migración, pruebas y pendientes físicos H10S](docs/ACTUALIZACION-H10S.md) antes de actualizar equipos. La compatibilidad de la impresora integrada, la compilación del manejador nativo del lector y la causa exacta del error de instalación siguen pendientes de acceso al hardware/SDK. No hay un APK final certificado para ese equipo.
+
+- `node scripts/receipt-examples.mjs`: tres muestras PDF reales de 58 mm sin crear ventas.
+- `node scripts/diagnose-android.mjs`: diagnóstico ADB sin desinstalar ni borrar datos.

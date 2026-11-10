@@ -12,12 +12,14 @@ export function CatalogScreen({products, customers, user, run, refresh, busy, in
   const admin = user.role === 'admin';
   const [tab, setTab] = useState<'products' | 'customers'>(initialTab || (admin ? 'products' : 'customers')), [query, setQuery] = useState(''), [status, setStatus] = useState('active'), [limit, setLimit] = useState(PAGE);
   const [editing, setEditing] = useState<string | null>(null), [name, setName] = useState(''), [price, setPrice] = useState(''), [unit, setUnit] = useState<'unit' | 'kg'>('unit'), [active, setActive] = useState(true), [tracks, setTracks] = useState(false), [stock, setStock] = useState(''), [city, setCity] = useState('');
+  const [codes,setCodes]=useState<{code:string;kind:'internal'|'barcode'}[]>([]);
   const [deactivate, setDeactivate] = useState<{id: string; name: string} | null>(null);
   const isProducts = tab === 'products';
 
   function open(item: Product | Customer | null) {
+    setCodes(item&&'price_cents' in item?item.codes||[]:[]);
     setEditing(item ? item.id : 'new'); setName(item?.name || '');
-    if (item && 'price_cents' in item) { setPrice(moneyInput(item.price_cents)); setUnit(item.unit); setActive(!!item.active); setTracks(item.stock_milli !== null); setStock(item.stock_milli === null ? '' : quantityText(item.stock_milli)); }
+    if (item && 'price_cents' in item) { setPrice(moneyInput(item.price_cents)); setUnit(item.unit); setActive(!!item.active); const stock=item.global_stock_milli===undefined?item.stock_milli:item.global_stock_milli;setTracks(stock!==null);setStock(stock===null?'':quantityText(stock)); }
     else { setPrice(''); setUnit('unit'); setActive(true); setTracks(false); setStock(''); setCity(item && 'city' in item ? item.city : ''); }
   }
   const priceCents = moneyToCents(price);
@@ -26,16 +28,16 @@ export function CatalogScreen({products, customers, user, run, refresh, busy, in
   const errors = isProducts
     ? {price: price && (priceCents === null || priceCents <= 0) ? 'Escribe un precio válido, por ejemplo 12.000' : null, stock: tracks && stock && stockMilli === null ? (unit === 'unit' ? 'Solo unidades enteras' : 'Usa coma para decimales: 12,5') : null}
     : {price: null, stock: null};
-  const canSave = isProducts ? !!name.trim() && priceCents !== null && priceCents > 0 && (!tracks || stockMilli !== null) : !!name.trim() && !!city.trim();
+  const canSave = isProducts ? (editing!=='new'||codes.some(c=>c.code.trim())) && !!name.trim() && priceCents !== null && priceCents > 0 && (!tracks || stockMilli !== null) : !!name.trim() && !!city.trim();
   async function save() {
-    const body = isProducts ? {name: name.trim(), price: normalizeMoney(price), unit, active, stock: tracks ? quantityForApi(stockMilli!) : null,expected_stock_milli:products.find(p=>p.id===editing)?.stock_milli,expected_updated_at:products.find(p=>p.id===editing)?.updated_at} : {name: name.trim(), city: city.trim()};
+    const body = isProducts ? {codes:codes.filter(c=>c.code.trim()).map(c=>({...c,code:c.code.trim()})),name: name.trim(), price: normalizeMoney(price), unit, active, stock: tracks ? quantityForApi(stockMilli!) : null,expected_stock_milli:(()=>{const p=products.find(p=>p.id===editing);return p?.global_stock_milli===undefined?p?.stock_milli:p.global_stock_milli;})(),expected_updated_at:products.find(p=>p.id===editing)?.updated_at} : {name: name.trim(), city: city.trim()};
     await api(`/${tab}${editing && editing !== 'new' ? '/' + editing : ''}`, editing === 'new' ? 'POST' : 'PUT', body);
     setEditing(null); await refresh();
   }
 
   const list = useMemo(() => {
     const q = normalizeSearch(query);
-    if (isProducts) return products.filter(p => (status === 'all' || (status === 'active' ? !!p.active : !p.active)) && (!q || normalizeSearch(p.name).includes(q)));
+    if (isProducts) return products.filter(p => (status === 'all' || (status === 'active' ? !!p.active : !p.active)) && (!q || (normalizeSearch(p.name).includes(q)||p.codes?.some(c=>normalizeSearch(c.code).includes(q)))));
     return customers.filter(c => !q || normalizeSearch(c.name).includes(q) || normalizeSearch(c.city).includes(q));
   }, [products, customers, query, status, isProducts]);
   const canCreate = admin || !isProducts;
@@ -82,6 +84,9 @@ export function CatalogScreen({products, customers, user, run, refresh, busy, in
       </>}>
       <Field label="Nombre" kind={isProducts ? 'text' : 'name'} value={name} onChange={setName} placeholder={isProducts ? 'Ej. Pechuga de pollo' : 'Ej. Manuel Rodríguez'} autoFocus={editing === 'new'} testID="catalog-name"/>
       {isProducts ? <>
+        <Text style={styles.label}>Códigos de identificación</Text>
+        {codes.map((c,i)=><View key={i} style={{gap:6}}><Field label={`Código ${i+1}`} value={c.code} onChange={v=>setCodes(codes.map((x,j)=>j===i?{...x,code:v}:x))} placeholder="Código interno o de barras"/><Choice items={[{id:'internal',name:'Interno'},{id:'barcode',name:'Código de barras'}]} value={c.kind} onChange={v=>setCodes(codes.map((x,j)=>j===i?{...x,kind:v as 'internal'|'barcode'}:x))}/><Button title="Quitar código" variant="ghost" onPress={()=>setCodes(codes.filter((_,j)=>j!==i))}/></View>)}
+        <Button title="Agregar código" variant="outline" onPress={()=>setCodes([...codes,{code:'',kind:'internal'}])}/>
         <View style={{gap: 6}}><Text style={styles.label}>¿Cómo se vende?</Text>
           <Segmented items={[{id: 'unit', name: 'Por unidad'}, {id: 'kg', name: 'Por kilogramo'}]} value={unit} onChange={v => setUnit(v as 'unit' | 'kg')}/>
           {editing !== 'new' && <Text style={styles.hint}>Si el producto ya tiene ventas, conserva su unidad. Para cambiarla, crea otro producto.</Text>}

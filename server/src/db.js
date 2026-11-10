@@ -9,7 +9,7 @@ export function openDatabase(path = process.env.DATABASE_PATH || './data/pos.sql
  const db = new DatabaseSync(path);
  db.exec(readFileSync(new URL('./schema.sql', import.meta.url), 'utf8'));
  migrate(db);
- for (const table of ['sales','sale_items','payments','closures','closure_notes','audit','documents','sync_events','offline_sales','catalog_versions','sync_issues']) {
+ for (const table of ['sales','sale_items','payments','closures','closure_notes','audit','documents','sync_events','offline_sales','catalog_versions','sync_issues','stock_movements','sale_terms','sale_voids','collections','collection_allocations','collection_reversals','sale_stock_effects']) {
   for (const operation of ['UPDATE','DELETE']) db.exec(`CREATE TRIGGER IF NOT EXISTS ${table}_no_${operation} BEFORE ${operation} ON ${table} BEGIN SELECT RAISE(ABORT,'Registro inmutable'); END;`);
  }
  return db;
@@ -18,6 +18,7 @@ export const DEFAULT_BUSINESS_NAME = "DISTRIBUIDORA & SALSAMENTARIA DANNY'S";
 // Datos opcionales del comprobante. Se agregan sin tocar filas existentes; vacío = no se imprime.
 export const BUSINESS_FIELDS = ['business_nit','business_address','business_phone','business_city'];
 function migrate(db) {
+ db.exec(readFileSync(new URL('./commerce-schema.sql', import.meta.url), 'utf8'));
  const cashColumns = new Set(db.prepare('PRAGMA table_info(cash_sessions)').all().map(c => c.name));
  if (!cashColumns.has('device_id')) db.exec('ALTER TABLE cash_sessions ADD COLUMN device_id TEXT');
  db.exec('DROP INDEX IF EXISTS one_open_session');

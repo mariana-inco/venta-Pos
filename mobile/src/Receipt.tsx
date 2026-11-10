@@ -33,6 +33,7 @@ export function Receipt({sale, width}: {sale: Sale; width: 58 | 80}) {
     <Pair left="Fecha" right={shortDate(sale.created_at)}/>
     <Pair left="Hora" right={time(sale.created_at)}/>
     <Pair left="Vendedor" right={s.seller_name}/>
+    {!!s.route_name&&<Pair left="Ruta" right={s.route_name}/>}
     {!!sale.session_number && <Pair left="Caja" right={`#${sale.session_number}`}/>}
     <View style={{height: 4}}/>
     <Pair left="Cliente" right={s.customer_name}/>
@@ -47,6 +48,9 @@ export function Receipt({sale, width}: {sale: Sale; width: 58 | 80}) {
     <View style={r.double}/>
     <Pair left="TOTAL" right={cop(sale.total_cents)} bold big/>
     <View style={r.double}/>
+    {s.cash_received_cents!=null&&<><Pair left="Recibido" right={cop(s.cash_received_cents)}/><Pair left="Cambio" right={cop(s.cash_change_cents||0)}/></>}
+    {s.credit&&<><Pair left="Abono inicial" right={cop(s.initial_paid_cents||0)}/><Pair left="Saldo al emitir" right={cop(s.initial_balance_cents||0)}/><T bold>{(s.initial_balance_cents||0)===0?'PAGADA':s.initial_paid_cents?'PAGO PARCIAL':'PENDIENTE'}</T></>}
+    {sale.state==='ANULADA'&&<T bold>ANULADA · Original conservado</T>}
     <Pair left="Productos" right={String(sale.items?.length || 0)}/>
     {sale.payments?.map((p, i) => <View key={i}>
       <Pair left="Método de pago" right={p.method === 'cash' ? 'EFECTIVO' : (p.platform_name || 'ELECTRÓNICO').toUpperCase()}/>

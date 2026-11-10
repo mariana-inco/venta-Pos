@@ -16,18 +16,20 @@
     "test:e2e": "node scripts/e2e.mjs",
     "dev": "node scripts/dev.mjs",
     "build:android": "node scripts/build-android.mjs",
-    "test:offline": "node --test server/test/offline.test.js"
+    "test:offline": "node --test server/test/offline.test.js",
+    "doctor": "npx expo-doctor mobile"
   },
   "engines": {
-    "node": ">=24.0.0"
+    "node": "^24.3.0 || >=26.0.0"
   },
   "overrides": {
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "react-native": "0.86.3",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-native": "0.88.1",
     "uuid": "^11.1.1"
   },
   "devDependencies": {
-    "@playwright/test": "^1.64.0"
+    "@playwright/test": "^1.64.0",
+    "@types/react": "~19.3.0"
   }
 }

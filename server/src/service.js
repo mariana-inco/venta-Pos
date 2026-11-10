@@ -1,3 +1,4 @@
+import {routeFor,consumeRoute,balance} from './commerce.js';
 import { id, now, audit, transaction } from './db.js';
 import { money, quantity, subtotal } from './money.js';
 import { digest } from './auth.js';
@@ -12,17 +13,18 @@ export function sessionFor(db,user,sessionId) {
  return session;
 }
 export function totals(db,sessionId) {
- const rows=db.prepare('SELECT p.method,p.platform_id,p.platform_name,SUM(p.amount_cents) AS amount FROM payments p JOIN sales s ON s.id=p.sale_id WHERE s.session_id=? GROUP BY p.method,p.platform_id,p.platform_name').all(sessionId);
- const cash=rows.filter(r=>r.method==='cash').reduce((a,r)=>a+r.amount,0);
- const electronic=rows.filter(r=>r.method==='electronic').reduce((a,r)=>a+r.amount,0);
- const count=db.prepare('SELECT COUNT(*) AS n FROM sales WHERE session_id=?').get(sessionId).n;
- return {cash_cents:cash,electronic_cents:electronic,total_cents:cash+electronic,sale_count:count,platforms:rows.filter(r=>r.method==='electronic')};
+ const rows=db.prepare('SELECT p.method,p.platform_id,p.platform_name,SUM(p.amount_cents) AS amount FROM payments p JOIN sales s ON s.id=p.sale_id WHERE s.session_id=? AND NOT EXISTS(SELECT 1 FROM sale_voids v WHERE v.sale_id=s.id) GROUP BY p.method,p.platform_id,p.platform_name').all(sessionId);
+ const collected=db.prepare('SELECT c.method,SUM(c.amount_cents) amount FROM collections c LEFT JOIN collection_reversals r ON r.collection_id=c.id WHERE c.session_id=? AND r.collection_id IS NULL GROUP BY c.method').all(sessionId);
+ const cash=collected.filter(r=>r.method==='cash').reduce((a,r)=>a+r.amount,0)+rows.filter(r=>r.method==='cash').reduce((a,r)=>a+r.amount,0);
+ const electronic=collected.filter(r=>r.method==='electronic').reduce((a,r)=>a+r.amount,0)+rows.filter(r=>r.method==='electronic').reduce((a,r)=>a+r.amount,0);
+ const count=db.prepare('SELECT COUNT(*) AS n FROM sales WHERE session_id=? AND NOT EXISTS(SELECT 1 FROM sale_voids v WHERE v.sale_id=sales.id)').get(sessionId).n;
+ return {cash_cents:cash,electronic_cents:electronic,total_cents:db.prepare('SELECT COALESCE(SUM(total_cents),0) n FROM sales WHERE session_id=? AND NOT EXISTS(SELECT 1 FROM sale_voids v WHERE v.sale_id=sales.id)').get(sessionId).n,collection_cents:collected.reduce((a,r)=>a+r.amount,0),sale_count:count,platforms:[...rows.filter(r=>r.method==='electronic'),...collected.filter(r=>r.method==='electronic').map(r=>({platform_name:'Abonos electrónicos',platform_id:null,amount:r.amount}))]};
 }
 export function saleDetail(db,user,saleId) {
  const sale=db.prepare('SELECT * FROM sales WHERE id=?').get(saleId);
  if(!sale) fail(404,'Venta no encontrada.');
  if(user.role!=='admin' && sale.seller_id!==user.id) fail(403,'No puedes consultar una venta ajena.');
- return {...sale,session_number:sessionNumber(db,sale.session_id),snapshot:JSON.parse(sale.snapshot),items:db.prepare('SELECT * FROM sale_items WHERE sale_id=? ORDER BY rowid').all(saleId),payments:db.prepare('SELECT * FROM payments WHERE sale_id=?').all(saleId)};
+ return {...sale,...balance(db,sale.id),terms:db.prepare('SELECT * FROM sale_terms WHERE sale_id=?').get(sale.id),session_number:sessionNumber(db,sale.session_id),snapshot:JSON.parse(sale.snapshot),items:db.prepare('SELECT * FROM sale_items WHERE sale_id=? ORDER BY rowid').all(saleId),payments:db.prepare('SELECT * FROM payments WHERE sale_id=?').all(saleId)};
 }
 export function recordSale(db,user,input) {
  return transaction(db,()=>{
@@ -30,11 +32,14 @@ export function recordSale(db,user,input) {
   const existing=db.prepare('SELECT id,request_hash FROM sales WHERE seller_id=? AND request_key=?').get(user.id,input.request_key);
   if(existing) {if(existing.request_hash!==requestHash) fail(409,'Esta referencia ya fue usada para otra venta.');return saleDetail(db,user,existing.id);}
   const session=sessionFor(db,user,input.session_id);
-  if(session.device_id) fail(409,'Registra las ventas de esta caja desde su dispositivo de origen.');
+  const route=routeFor(db,user);
+  if(input.credit&&!route)fail(400,'Asigna una ruta antes de facturar a crédito.');
+  if(session.device_id&&!route) fail(409,'Registra las ventas de esta caja desde su dispositivo de origen.');
   if(session.opened_by!==user.id) fail(403,'Solo el propietario puede vender en esta caja.');
   if(session.state!=='open') fail(409,'La caja está cerrada. Abre una nueva.');
   const customer=db.prepare('SELECT * FROM customers WHERE id=? AND active=1').get(input.customer_id);
   if(!customer) fail(400,'Selecciona un cliente activo.');
+  if(route&&!db.prepare('SELECT 1 FROM customer_routes WHERE customer_id=? AND route_id=?').get(customer.id,route.id))fail(403,'El cliente no pertenece a tu ruta.');
   let platform=null;
   if(input.method==='electronic') {
    platform=db.prepare('SELECT * FROM platforms WHERE id=? AND active=1').get(input.platform_id||'');
@@ -47,22 +52,28 @@ export function recordSale(db,user,input) {
    if(!p) fail(400,'Uno de los productos no está disponible.');
    if(item.expected_price_cents!==undefined && item.expected_price_cents!==p.price_cents) fail(409,`El precio de ${p.name} cambió. Actualiza los productos antes de confirmar.`);
    const qty=quantity(item.quantity,p.unit);
-   if(p.stock_milli!==null && p.stock_milli<qty) fail(409,`Existencias insuficientes: ${p.name}.`);
-   return {id:id(),product_id:p.id,name:p.name,unit:p.unit,quantity_milli:qty,price_cents:p.price_cents,subtotal_cents:subtotal(p.price_cents,qty),tracks_stock:p.stock_milli!==null};
+   if(!route && p.stock_milli!==null && p.stock_milli<qty) fail(409,`Existencias insuficientes: ${p.name}.`);
+   return {id:id(),product_id:p.id,name:p.name,unit:p.unit,quantity_milli:qty,price_cents:p.price_cents,subtotal_cents:subtotal(p.price_cents,qty),tracks_stock:!route&&p.stock_milli!==null};
   });
   const total=items.reduce((sum,i)=>sum+i.subtotal_cents,0);
   if(!Number.isSafeInteger(total)||total>100_000_000_000) fail(400,'El total supera el límite permitido.');
+  const paid=input.credit?money(input.initial_payment||'0'):total;
+  if(paid>total)fail(400,'El abono inicial supera el total.');
+  const received=input.cash_received===undefined?null:money(input.cash_received);
+  if(received!==null&&(input.credit||input.method!=='cash'||received<total))fail(400,'El efectivo recibido debe cubrir la venta de contado.');
   const saleId=id(); const created=now();
   const number=db.prepare('SELECT COALESCE(MAX(number),0)+1 AS n FROM sales').get().n;
   const settings=db.prepare('SELECT * FROM settings WHERE id=1').get();
   // Los datos del negocio quedan congelados en la venta: el comprobante histórico no cambia si se editan después.
-  const snapshot={business_name:settings.business_name,business_nit:settings.business_nit,business_address:settings.business_address,business_phone:settings.business_phone,business_city:settings.business_city,customer_name:customer.name,customer_city:customer.city,seller_name:user.name};
+  const snapshot={business_name:settings.business_name,business_nit:settings.business_nit,business_address:settings.business_address,business_phone:settings.business_phone,business_city:settings.business_city,customer_name:customer.name,customer_city:customer.city,seller_name:user.name,route_name:route?.name||null,route_id:route?.id||null,credit:!!input.credit,initial_paid_cents:paid,initial_balance_cents:total-paid,cash_received_cents:received,cash_change_cents:received===null?null:received-total};
   db.prepare('INSERT INTO sales VALUES (?,?,?,?,?,?,?,?,?,?)').run(saleId,number,session.id,user.id,customer.id,created,total,JSON.stringify(snapshot),input.request_key,requestHash);
+  db.prepare('INSERT INTO sale_terms VALUES (?,?,?,?)').run(saleId,route?.id||null,Number(!!input.credit),paid);
+  if(route)consumeRoute(db,user,route,items,saleId);
   for(const item of items) {
    db.prepare('INSERT INTO sale_items VALUES (?,?,?,?,?,?,?,?)').run(item.id,saleId,item.product_id,item.name,item.unit,item.quantity_milli,item.price_cents,item.subtotal_cents);
-   if(item.tracks_stock) db.prepare('UPDATE products SET stock_milli=stock_milli-?,updated_at=? WHERE id=?').run(item.quantity_milli,created,item.product_id);
+   if(item.tracks_stock){db.prepare('UPDATE products SET stock_milli=stock_milli-?,updated_at=? WHERE id=?').run(item.quantity_milli,created,item.product_id);db.prepare('INSERT INTO sale_stock_effects VALUES (?,?,?)').run(saleId,item.product_id,item.quantity_milli);}
   }
-  db.prepare('INSERT INTO payments VALUES (?,?,?,?,?,?)').run(id(),saleId,input.method,platform?.id||null,platform?.name||null,total);
+  if(paid>0)db.prepare('INSERT INTO payments VALUES (?,?,?,?,?,?)').run(id(),saleId,input.method,platform?.id||null,platform?.name||null,paid);
   audit(db,user.id,'sale.create',saleId,{session_id:session.id,total_cents:total});
   return saleDetail(db,user,saleId);
  });

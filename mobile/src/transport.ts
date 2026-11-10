@@ -6,6 +6,6 @@ export async function remote<T>(path:string,method='GET',body?:unknown,token='',
  catch(e){throw new ApiError('No hay conexión con el servidor. Los datos guardados en este dispositivo se conservan.',0,`${method} ${path} · ${e instanceof Error?e.message:String(e)}`);}
  let data:any=null;try{data=await response.json();}catch{}
  if(!response.ok)throw new ApiError(data?.error||(response.status>=500?'El servidor no pudo completar la operación.':'No se pudo completar la operación.'),response.status,`${method} ${path}`);
- if(data===null)throw new ApiError('La respuesta del servidor no es válida.',502,`${method} ${path}`);
+ if(data===null&&path!=='/route')throw new ApiError('La respuesta del servidor no es válida.',502,`${method} ${path}`);
  return data;
 }

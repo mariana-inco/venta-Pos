@@ -14,6 +14,7 @@ import {CashScreen} from './src/CashScreen';
 import {HistoryScreen} from './src/HistoryScreen';
 import {SyncBanner} from './src/DeviceSettings';
 import {offlineEnabled,startSync,subscribeSync} from './src/offline/runtime';
+import {OperationsScreen} from './src/OperationsScreen';
 import {SettingsScreen} from './src/SettingsScreen';
 // Cinco pestañas caben cómodas desde 320 px; Vender queda al centro, al alcance del pulgar. Perfil se abre desde el avatar.
 const tabs=[{id:'home',name:'Inicio',icon:'home'},{id:'cash',name:'Caja',icon:'inbox'},{id:'sale',name:'Vender',icon:'shopping-cart'},{id:'catalog',name:'Catálogo',icon:'package'},{id:'history',name:'Historial',icon:'clock'}] as const;
@@ -23,6 +24,7 @@ function Main(){
  const {width}=useWindowDimensions();
  const [user,setUser]=useState<User|null>(null),[boot,setBoot]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState<{text:string;detail?:string}|null>(null),[tab,setTab]=useState<Tab>('home');
  const [products,setProducts]=useState<Product[]>([]),[customers,setCustomers]=useState<Customer[]>([]),[platforms,setPlatforms]=useState<PayPlatform[]>([]),[sessions,setSessions]=useState<CashSession[]>([]),[settings,setSettings]=useState<Settings>({business_name:"DISTRIBUIDORA & SALSAMENTARIA DANNY'S",paper_width:80}),[sale,setSale]=useState<Sale|null>(null),[closure,setClosure]=useState<Closure|null>(null),[sessionFilter,setSessionFilter]=useState(''),[historyVersion,setHistoryVersion]=useState(0),[catalogTab,setCatalogTab]=useState<'products'|'customers'>('products'),[catalogVersion,setCatalogVersion]=useState(0),[toast,setToast]=useState('');
+ const [route,setRoute]=useState<{id:string;name:string}|null>(null);
  const toastTimer=useRef<ReturnType<typeof setTimeout>>(undefined);
  const notify=useCallback((text:string)=>{setToast(text);clearTimeout(toastTimer.current);toastTimer.current=setTimeout(()=>setToast(''),2600);},[]);
  const run=useCallback<Run>((fn,success)=>{setBusy(true);setError(null);void fn().then(()=>{if(success)notify(success);}).catch(async(e:unknown)=>{
@@ -30,6 +32,7 @@ function Main(){
   if(e instanceof ApiError&&e.status===401&&!e.detail.includes('/auth/login')){await forgetSession();setUser(null);setError({text:'Tu sesión terminó. Ingresa de nuevo para continuar.'});}
  }).finally(()=>setBusy(false));},[notify]);
  const refresh=useCallback(async()=>{
+  const currentRoute=await api<{id:string;name:string}|null>('/route');setRoute(currentRoute);
   const results=await Promise.all([api<Product[]>('/products'),api<Customer[]>('/customers'),api<PayPlatform[]>('/platforms'),api<CashSession[]>('/cash-sessions'),api<Settings>('/settings')]);setProducts(results[0]);setCustomers(results[1]);setPlatforms(results[2]);setSessions(results[3]);setSettings(results[4]);
  },[]);
  useEffect(()=>{void restoreSession().then(async u=>{if(u){setUser(u);await refresh();}}).catch(e=>setError({text:e.message,detail:e instanceof ApiError?e.detail:undefined})).finally(()=>setBoot(false));},[]);
@@ -55,6 +58,7 @@ function Main(){
    <Pressable testID="cash-status" accessibilityRole="button" accessibilityLabel={own?'Caja abierta, ver caja':'Caja cerrada, abrir caja'} onPress={()=>go('cash')} style={[local.cashPill,{backgroundColor:own?colors.greenSoft:colors.orangeSoft}]}>
     <View style={[local.dot,{backgroundColor:own?colors.green:colors.orange}]}/><Text numberOfLines={1} style={[local.cashText,{color:own?colors.greenDark:colors.orange}]}>{own?`Caja${own.number?' #'+own.number:''}`:'Sin caja'}</Text>
    </Pressable>
+   <Pressable accessibilityRole="button" accessibilityLabel="Rutas y abonos" onPress={()=>go('operations')} style={{padding:8}}><Feather name="credit-card" size={22} color={colors.green}/></Pressable>
    <Pressable testID="profile-button" accessibilityRole="button" accessibilityLabel="Mi perfil y configuración" onPress={()=>go('settings')} style={[local.avatar,tab==='settings'&&{borderColor:colors.green,borderWidth:2}]}>
     <Text style={local.avatarText}>{initials(user.name)}</Text>
    </Pressable>
@@ -65,10 +69,11 @@ function Main(){
    <SyncBanner/>
    {tab==='home'&&<HomeScreen user={user} sessions={sessions} busy={busy} run={run} refresh={refresh} go={go} onHistory={()=>history()} onCatalog={catalog}/>}
    {/* Vender permanece montada: el carrito no se pierde al cambiar de pestaña. */}
-   <View style={{flex:tab==='sale'?1:0,display:tab==='sale'?'flex':'none'}}><SaleScreen userId={user.id} active={tab==='sale'} session={own} products={products} customers={customers} platforms={platforms} paperWidth={settings.paper_width} refresh={refresh} run={run} busy={busy} onViewSale={s=>history(s)} onOpenCash={()=>go('cash')}/></View>
+   <View style={{flex:tab==='sale'?1:0,display:tab==='sale'?'flex':'none'}}><SaleScreen route={route} userId={user.id} active={tab==='sale'} session={own} products={products} customers={customers} platforms={platforms} paperWidth={Platform.OS==='android'?58:settings.paper_width} refresh={refresh} run={run} busy={busy} onViewSale={s=>history(s)} onOpenCash={()=>go('cash')}/></View>
    {tab==='cash'&&<CashScreen sessions={sessions} user={user} refresh={refresh} run={run} busy={busy} onClosure={c=>history(null,c)} onHistory={id=>history(null,null,id)} onSell={()=>go('sale')}/>}
    {tab==='catalog'&&<CatalogScreen key={catalogVersion} initialTab={catalogTab} products={products} customers={customers} user={user} run={run} refresh={refresh} busy={busy}/>}
    {tab==='history'&&<HistoryScreen key={historyVersion} user={user} settings={settings} run={run} busy={busy} initialSale={sale} initialClosure={closure} sessionFilter={sessionFilter} clearInitial={()=>{setSale(null);setClosure(null);}} customers={customers} sessions={sessions}/>}
+   {tab==='operations'&&<OperationsScreen user={user} products={products} customers={customers} session={own} run={run} busy={busy} refresh={refresh}/>}
    {tab==='settings'&&<SettingsScreen user={user} settings={settings} platforms={platforms} run={run} refresh={refresh} busy={busy} logout={logout}/>}
    {!!toast&&<Toast text={toast}/>}
   </View>

@@ -1,3 +1,4 @@
+import {mountCommerce,productsFor,saveCodes,codesFor,routeFor,balance} from './commerce.js';
 import express from 'express';
 import {mountSync, mountDeviceAdmin} from './sync.js';
 import helmet from 'helmet';
@@ -49,27 +50,31 @@ export function createApp(db) {
   const fields=BUSINESS_FIELDS.filter(f=>req.input[f]!==undefined);
   const result=transaction(db,()=>{db.prepare(`UPDATE settings SET business_name=?,paper_width=?${fields.map(f=>`,${f}=?`).join('')} WHERE id=1`).run(req.input.business_name,req.input.paper_width,...fields.map(f=>req.input[f]));audit(db,req.user.id,'settings.update','1',req.input);return db.prepare(settingsQuery).get();});res.json(result);
  });
- app.get('/api/products',(req,res)=>res.json(db.prepare(`SELECT * FROM products ${req.user.role==='admin'?'': 'WHERE active=1'} ORDER BY name`).all().map(p=>({...p,stock_milli:p.stock_milli===null?null:p.stock_milli-(db.prepare('SELECT quantity_milli FROM stock_debts WHERE product_id=?').get(p.id)?.quantity_milli||0)}))));
+ mountCommerce(app,db);
+ app.get('/api/products',(req,res)=>res.json(productsFor(db,req.user)));
  const saveProduct=(req,res)=>res.json(transaction(db,()=>{
   const p=req.input;const productId=req.params.id||id();const previous=req.params.id?db.prepare('SELECT * FROM products WHERE id=?').get(productId):null;
   if(req.params.id&&!previous) fail(404,'Producto no encontrado.');
   if(previous && ((p.expected_updated_at!==undefined && p.expected_updated_at!==previous.updated_at)||(p.expected_stock_milli!==undefined && p.expected_stock_milli!==(previous.stock_milli===null?null:previous.stock_milli-(db.prepare('SELECT quantity_milli FROM stock_debts WHERE product_id=?').get(productId)?.quantity_milli||0))))) fail(409,'El producto o sus existencias cambiaron. Actualiza el catálogo antes de guardar.');
+  if(previous && previous.unit!==p.unit && db.prepare('SELECT 1 FROM product_groups WHERE product_id=?').get(productId))fail(409,'Conserva la unidad del grupo de inventario.');
   if(previous && previous.unit!==p.unit && (db.prepare('SELECT id FROM sale_items WHERE product_id=?').get(productId)||db.prepare("SELECT 1 FROM catalog_versions v, json_each(v.payload,'$.products') p WHERE json_extract(p.value,'$.id')=? LIMIT 1").get(productId))) fail(409,'Un producto vendido o descargado por un dispositivo conserva su unidad de medida. Crea otro producto.');
   const price=money(p.price);if(price<=0) fail(400,'El precio debe ser mayor a cero.');
   const stock=p.stock===null?null:(scaled(p.stock,3,'Existencias')===0?0:quantity(p.stock,p.unit)); const updated=now();
   db.prepare('INSERT INTO products VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,price_cents=excluded.price_cents,unit=excluded.unit,active=excluded.active,stock_milli=excluded.stock_milli,updated_at=excluded.updated_at').run(productId,p.name,price,p.unit,Number(p.active),stock,previous?.created_at||updated,updated);
+  const previousCodes=codesFor(db,productId);
+  saveCodes(db,productId,p.codes);
   if(previous)db.prepare('DELETE FROM stock_debts WHERE product_id=?').run(productId);
-  audit(db,req.user.id,previous?'product.update':'product.create',productId,{before:previous,after:{...p,price_cents:price,stock_milli:stock}});
-  return db.prepare('SELECT * FROM products WHERE id=?').get(productId);
+  audit(db,req.user.id,previous?'product.update':'product.create',productId,{before:previous,before_codes:previousCodes,after:{...p,price_cents:price,stock_milli:stock}});
+  return productsFor(db,req.user).find(p=>p.id===productId);
  }));
  app.post('/api/products',admin,validate(schemas.product),saveProduct);app.put('/api/products/:id',admin,validate(schemas.product),saveProduct);
  app.delete('/api/products/:id',admin,(req,res)=>{
   transaction(db,()=>{if(!db.prepare('SELECT id FROM products WHERE id=?').get(req.params.id))fail(404,'Producto no encontrado.');db.prepare('UPDATE products SET active=0,updated_at=? WHERE id=?').run(now(),req.params.id);audit(db,req.user.id,'product.deactivate',req.params.id);});res.json({ok:true,message:'Producto desactivado; historial conservado.'});
  });
- app.get('/api/customers',(req,res)=>{const search=String(req.query.search||'').slice(0,120);res.json(db.prepare(`SELECT * FROM customers WHERE active=1 AND instr(lower(name),lower(?))>0 ORDER BY name`).all(search));});
+ app.get('/api/customers',(req,res)=>{const route=routeFor(db,req.user);const search=String(req.query.search||'').slice(0,120);res.json(db.prepare(`SELECT * FROM customers WHERE active=1 AND (instr(lower(name),lower(?))>0 OR EXISTS(SELECT 1 FROM customer_routes cr WHERE cr.customer_id=customers.id AND instr(lower(cr.identification),lower(?))>0)) ORDER BY name`).all(search,search).map(c=>({...c,identification:db.prepare('SELECT identification FROM customer_routes WHERE customer_id=? LIMIT 1').get(c.id)?.identification||''})).filter(c=>req.user.role==='admin'||!route||db.prepare('SELECT 1 FROM customer_routes WHERE customer_id=? AND route_id=?').get(c.id,route.id)));});
  app.post('/api/customers',validate(schemas.customer),(req,res)=>res.status(201).json(transaction(db,()=>{
   const p=req.input;const existing=db.prepare('SELECT * FROM customers WHERE name=? COLLATE NOCASE AND city=? COLLATE NOCASE AND active=1').get(p.name,p.city);if(existing)return existing;
-  const customerId=id();const created=now();db.prepare('INSERT INTO customers VALUES (?,?,?,?,?,?)').run(customerId,p.name,p.city,1,created,created);audit(db,req.user.id,'customer.create',customerId,p);return db.prepare('SELECT * FROM customers WHERE id=?').get(customerId);
+  const customerId=id();const created=now();db.prepare('INSERT INTO customers VALUES (?,?,?,?,?,?)').run(customerId,p.name,p.city,1,created,created);const route=routeFor(db,req.user);if(route)db.prepare('INSERT INTO customer_routes VALUES (?,?,?)').run(customerId,route.id,'');audit(db,req.user.id,'customer.create',customerId,p);return db.prepare('SELECT * FROM customers WHERE id=?').get(customerId);
  })));
  app.put('/api/customers/:id',admin,validate(schemas.customer),(req,res)=>res.json(transaction(db,()=>{
   if(!db.prepare('SELECT id FROM customers WHERE id=? AND active=1').get(req.params.id)) fail(404,'Cliente no encontrado.');
@@ -97,18 +102,19 @@ export function createApp(db) {
  app.get('/api/cash-sessions/:id',(req,res)=>{const session=sessionFor(db,req.user,req.params.id);const computed=totals(db,session.id);res.json({...session,...computed,expected_cash_cents:session.opening_cents+computed.cash_cents,closure_id:db.prepare('SELECT id FROM closures WHERE session_id=?').get(session.id)?.id||null});});
  app.post('/api/sales',validate(schemas.sale),async(req,res)=>{const sale=recordSale(db,req.user,req.input);res.status(201).json({...sale,...await generateDocuments(db,'sale',sale)});});
  app.get('/api/sales',(req,res)=>{
-  const filter=z.object({session_id:z.string().uuid().optional(),seller_id:z.string().uuid().optional(),customer_id:z.string().uuid().optional(),method:z.enum(['cash','electronic']).optional(),from:z.iso.date().optional(),to:z.iso.date().optional(),page:z.coerce.number().int().min(1).max(100000).default(1)}).safeParse(req.query);
+  const filter=z.object({session_id:z.string().uuid().optional(),seller_id:z.string().uuid().optional(),customer_id:z.string().uuid().optional(),method:z.enum(['cash','electronic','credit']).optional(),from:z.iso.date().optional(),to:z.iso.date().optional(),page:z.coerce.number().int().min(1).max(100000).default(1)}).safeParse(req.query);
   if(!filter.success)fail(400,'Filtros inválidos.');const f=filter.data;const where=[],params=[];
   if(req.user.role!=='admin'){where.push('s.seller_id=?');params.push(req.user.id);}
   for(const key of ['session_id','seller_id','customer_id']) if(f[key]){where.push(`s.${key}=?`);params.push(f[key]);}
-  if(f.method){where.push('p.method=?');params.push(f.method);}
+  const saleMethod="CASE WHEN t.credit=1 THEN 'credit' ELSE p.method END";
+  if(f.method){where.push(`${saleMethod}=?`);params.push(f.method);}
   if(f.from){where.push('s.created_at>=?');params.push(`${f.from}T05:00:00.000Z`);}
   if(f.to){const date=new Date(`${f.to}T05:00:00.000Z`);date.setUTCDate(date.getUTCDate()+1);where.push('s.created_at<?');params.push(date.toISOString());}
-  const base=`FROM sales s JOIN payments p ON p.sale_id=s.id ${where.length?'WHERE '+where.join(' AND '):''}`;
+  const base=`FROM sales s LEFT JOIN payments p ON p.sale_id=s.id LEFT JOIN sale_terms t ON t.sale_id=s.id ${where.length?'WHERE '+where.join(' AND '):''}`;
   const count=db.prepare(`SELECT COUNT(DISTINCT s.id) AS n ${base}`).get(...params).n;
-  const rows=db.prepare(`SELECT s.*,p.method,p.platform_name ${base} ORDER BY s.created_at DESC LIMIT 50 OFFSET ?`).all(...params,(f.page-1)*50).map(s=>({...s,snapshot:JSON.parse(s.snapshot)}));
+  const rows=db.prepare(`SELECT s.*,${saleMethod} AS method,p.platform_name ${base} ORDER BY s.created_at DESC LIMIT 50 OFFSET ?`).all(...params,(f.page-1)*50).map(s=>({...s,...balance(db,s.id),snapshot:JSON.parse(s.snapshot)}));
   // Primera versión: un pago por venta. Modelo de pagos permite ampliación a varios.
-  const groups={};for(const [key,expr] of Object.entries({seller:'s.seller_id',customer:'s.customer_id',date:"date(s.created_at,'-5 hours')",method:'p.method',platform:'p.platform_name'}))groups[key]=db.prepare(`SELECT ${expr} AS key,COUNT(*) AS count,SUM(p.amount_cents) AS total_cents ${base} GROUP BY ${expr}`).all(...params);
+  const groups={};for(const [key,expr] of Object.entries({seller:'s.seller_id',customer:'s.customer_id',date:"date(s.created_at,'-5 hours')",method:saleMethod,platform:'p.platform_name'}))groups[key]=db.prepare(`SELECT ${expr} AS key,COUNT(*) AS count,SUM(CASE WHEN EXISTS(SELECT 1 FROM sale_voids v WHERE v.sale_id=s.id) THEN 0 ELSE s.total_cents END) AS total_cents ${base} GROUP BY ${expr}`).all(...params);
   res.json({sales:rows,count,page:f.page,groups});
  });
  app.get('/api/sales/:id',(req,res)=>res.json(saleDetail(db,req.user,req.params.id)));

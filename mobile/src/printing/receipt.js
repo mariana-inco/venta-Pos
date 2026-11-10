@@ -12,10 +12,12 @@ export function ticketLines(record,kind='sale',width=58){
  add('Ticket '+(s.ticket_number||'#'+record.number));
  add(new Intl.DateTimeFormat('es-CO',{dateStyle:'short',timeStyle:'short',timeZone:'America/Bogota'}).format(new Date(record.created_at)));
  if(kind==='sale'){
-  add('Vendedor: '+s.seller_name);add('Cliente: '+s.customer_name);add(s.customer_city);rule();
+  add('Vendedor: '+s.seller_name);if(s.route_name)add('Ruta: '+s.route_name);add('Cliente: '+s.customer_name);add(s.customer_city);rule();
   for(const i of record.items||[]){add(i.name);pair(`${qty(i.quantity_milli)} ${i.unit==='kg'?'kg':'und'} x ${money(i.price_cents)}`,money(i.subtotal_cents));}
   rule();pair('TOTAL',money(record.total_cents));
   for(const p of record.payments||[])pair('Pago',p.method==='cash'?'EFECTIVO':p.platform_name);
+  if(s.cash_received_cents!=null){pair('Recibido',money(s.cash_received_cents));pair('Cambio',money(s.cash_change_cents||0));}
+  if(s.credit){pair('Abono inicial',money(s.initial_paid_cents||0));pair('Saldo al emitir',money(s.initial_balance_cents||0));add((s.initial_balance_cents||0)===0?'PAGADA':s.initial_paid_cents?'PAGO PARCIAL':'PENDIENTE');}
   add('ID venta: '+record.id);rule();add('Gracias por su compra');add('Comprobante de venta.');add('No es factura electrónica.');
  }else{
   add('Abrió: '+s.opener_name);add('Cerró: '+s.admin_name);rule();

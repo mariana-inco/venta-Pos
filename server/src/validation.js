@@ -1,4 +1,5 @@
 import { z } from 'zod';
+export const codeSchema=z.array(z.object({code:z.string().trim().regex(/^[a-zA-Z0-9._-]{1,80}$/),kind:z.enum(['internal','barcode'])})).max(20);
 const text = (max=120) => z.string().trim().min(1).max(max);
 const decimal = z.string().regex(/^\d{1,10}([.,]\d{1,3})?$/);
 export const schemas = {
@@ -6,12 +7,12 @@ export const schemas = {
  user:z.object({username:z.string().regex(/^[a-zA-Z0-9_.-]{3,40}$/),name:text(),password:z.string().min(12).max(128),role:z.enum(['admin','seller'])}),
  userStatus:z.object({active:z.boolean()}),
  password:z.object({password:z.string().min(12).max(128)}),
- product:z.object({name:text(),price:decimal,unit:z.enum(['unit','kg']),active:z.boolean().default(true),stock:decimal.nullable().default(null),expected_stock_milli:z.number().int().nullable().optional(),expected_updated_at:z.string().optional()}),
+ product:z.object({codes:codeSchema.optional(),name:text(),price:decimal,unit:z.enum(['unit','kg']),active:z.boolean().default(true),stock:decimal.nullable().default(null),expected_stock_milli:z.number().int().nullable().optional(),expected_updated_at:z.string().optional()}),
  customer:z.object({name:text(),city:text(100)}),
  platform:z.object({name:text(80),active:z.boolean().default(true)}),
  settings:z.object({business_name:text(),paper_width:z.union([z.literal(58),z.literal(80)]),business_nit:z.string().trim().max(40).optional(),business_address:z.string().trim().max(160).optional(),business_phone:z.string().trim().max(40).optional(),business_city:z.string().trim().max(100).optional()}),
  opening:z.object({opening:decimal.default('0')}),
- sale:z.object({session_id:z.string().uuid(),customer_id:z.string().uuid(),items:z.array(z.object({product_id:z.string().uuid(),quantity:decimal,expected_price_cents:z.number().int().positive().optional()})).min(1).max(100),method:z.enum(['cash','electronic']),platform_id:z.string().max(80).nullable().optional(),request_key:z.string().uuid()}),
+ sale:z.object({session_id:z.string().uuid(),customer_id:z.string().uuid(),items:z.array(z.object({product_id:z.string().uuid(),quantity:decimal,expected_price_cents:z.number().int().positive().optional()})).min(1).max(100),cash_received:decimal.optional(),credit:z.boolean().default(false),initial_payment:decimal.optional(),method:z.enum(['cash','electronic']),platform_id:z.string().max(80).nullable().optional(),request_key:z.string().uuid()}),
  closing:z.object({reviewed_sale_count:z.number().int().nonnegative().optional(),declared_cash:decimal,declared_electronic:decimal,notes:z.string().trim().max(2000).default('')}),
  note:z.object({note:text(2000)})
 };

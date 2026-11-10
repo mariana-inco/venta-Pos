@@ -1,0 +1,84 @@
+import {z} from 'zod';
+import {id,now,audit,transaction} from './db.js';
+import {admin,digest} from './auth.js';
+import {money,quantity,scaled} from './money.js';
+import {fail} from './service.js';
+import {validate} from './validation.js';
+const text=z.string().trim().min(1).max(120),uuid=z.string().uuid();
+
+export const routeFor=(db,user)=>db.prepare('SELECT r.* FROM routes r JOIN seller_routes s ON s.route_id=r.id WHERE s.user_id=? AND r.active=1').get(user.id)||null;
+export function codesFor(db,product){return db.prepare('SELECT code,kind FROM product_codes WHERE product_id=? ORDER BY rowid').all(product);}
+export function saveCodes(db,product,codes){
+ if(codes===undefined)return;
+ const seen=new Set();for(const c of codes){const key=c.code.toLowerCase();if(seen.has(key))fail(400,'No repitas códigos.');seen.add(key);const other=db.prepare('SELECT product_id FROM product_codes WHERE code=?').get(c.code);if(other&&other.product_id!==product)fail(409,`El código ${c.code} ya pertenece a otro producto.`);}
+ db.prepare('DELETE FROM product_codes WHERE product_id=?').run(product);
+ for(const c of codes)db.prepare('INSERT INTO product_codes VALUES (?,?,?)').run(c.code,product,c.kind);
+}
+export function productsFor(db,user,includeInactive=false){
+ const route=routeFor(db,user);
+ return db.prepare(`SELECT p.*,g.group_id FROM products p LEFT JOIN product_groups g ON g.product_id=p.id ${user.role==='admin'||includeInactive?'':'WHERE p.active=1'} ORDER BY p.name`).all().map(p=>{
+  const globalStock=p.stock_milli===null?null:p.stock_milli-(db.prepare('SELECT quantity_milli FROM stock_debts WHERE product_id=?').get(p.id)?.quantity_milli||0);
+  return {...p,codes:codesFor(db,p.id),global_stock_milli:globalStock,stock_milli:route?(db.prepare('SELECT available_milli FROM route_stock WHERE route_id=? AND group_id=?').get(route.id,p.group_id||'')?.available_milli??0):globalStock};
+ });
+}
+export function balance(db,saleId){
+ const s=db.prepare('SELECT total_cents FROM sales WHERE id=?').get(saleId);if(!s)fail(404,'Factura no encontrada.');
+ const initial=db.prepare('SELECT COALESCE(SUM(amount_cents),0) n FROM payments WHERE sale_id=?').get(saleId).n;
+ const collected=db.prepare('SELECT COALESCE(SUM(a.amount_cents),0) n FROM collection_allocations a LEFT JOIN collection_reversals r ON r.collection_id=a.collection_id WHERE a.sale_id=? AND r.collection_id IS NULL').get(saleId).n;
+ const voided=!!db.prepare('SELECT 1 FROM sale_voids WHERE sale_id=?').get(saleId);
+ const remaining=voided?0:s.total_cents-initial-collected;
+ return {paid_cents:initial+collected,balance_cents:remaining,state:voided?'ANULADA':remaining===0?'PAGADA':initial+collected>0?'PAGO PARCIAL':'PENDIENTE'};
+}
+export function consumeRoute(db,user,route,items,saleId){
+ for(const i of items){const group=db.prepare('SELECT g.* FROM inventory_groups g JOIN product_groups p ON p.group_id=g.id WHERE p.product_id=?').get(i.product_id);if(!group||group.unit!==i.unit)fail(409,`Configura el inventario por ruta de ${i.name}.`);
+ const stock=db.prepare('SELECT available_milli FROM route_stock WHERE route_id=? AND group_id=?').get(route.id,group.id);
+ if(!stock||stock.available_milli<i.quantity_milli)fail(409,`No hay suficiente inventario disponible de ${group.name}. Stock disponible: ${(stock?.available_milli||0)/1000} ${group.unit==='kg'?'KG':'UND'}`);
+ db.prepare('UPDATE route_stock SET available_milli=available_milli-? WHERE route_id=? AND group_id=?').run(i.quantity_milli,route.id,group.id);
+ movement(db,user,route.id,group.id,-i.quantity_milli,'sale','Venta',i.product_id,saleId);
+ }
+}
+function movement(db,user,route,group,qty,kind,note,product=null,sale=null){db.prepare('INSERT INTO stock_movements VALUES (?,?,?,?,?,?,?,?,?,?)').run(id(),route,group,product,sale,qty,kind,user.id,note,now());}
+function customerAccess(db,user,customer){const route=routeFor(db,user);if(user.role!=='admin'&&(!route||!db.prepare('SELECT 1 FROM customer_routes WHERE customer_id=? AND route_id=?').get(customer,route.id)))fail(403,'El cliente no pertenece a tu ruta.');return route;}
+export function account(db,user,customer){customerAccess(db,user,customer);const invoices=db.prepare('SELECT s.*,t.route_id FROM sales s JOIN sale_terms t ON t.sale_id=s.id WHERE customer_id=? ORDER BY s.created_at,s.id').all(customer).filter(s=>user.role==='admin'||s.route_id===routeFor(db,user)?.id).map(s=>({...s,...balance(db,s.id),snapshot:JSON.parse(s.snapshot)}));return {invoices,balance_cents:invoices.reduce((a,s)=>a+s.balance_cents,0),collections:db.prepare('SELECT c.*,u.name seller_name,r.created_at reversed_at FROM collections c JOIN users u ON u.id=c.seller_id LEFT JOIN collection_reversals r ON r.collection_id=c.id WHERE c.customer_id=? ORDER BY c.created_at DESC').all(customer).filter(c=>user.role==='admin'||c.route_id===routeFor(db,user)?.id)};}
+export function mountCommerce(app,db){
+ app.get('/api/route', (req,res)=>res.json(routeFor(db,req.user)));
+ app.get('/api/routes',(req,res)=>res.json(req.user.role==='admin'?db.prepare('SELECT * FROM routes ORDER BY name').all():[routeFor(db,req.user)].filter(Boolean)));
+ app.post('/api/routes',admin,validate(z.object({name:text})),(req,res)=>res.json(transaction(db,()=>{const route={id:id(),name:req.input.name};db.prepare('INSERT INTO routes(id,name) VALUES (?,?)').run(route.id,route.name);audit(db,req.user.id,'route.create',route.id,route);return route;})));
+ app.get('/api/route-assignments',admin,(_,res)=>res.json(db.prepare('SELECT * FROM seller_routes').all()));
+ app.put('/api/routes/:id/sellers/:user',admin,(req,res)=>res.json(transaction(db,()=>{if(!db.prepare('SELECT 1 FROM routes WHERE id=?').get(req.params.id)||!db.prepare('SELECT 1 FROM users WHERE id=? AND active=1').get(req.params.user))fail(400,'Ruta o usuario inválido.');const pending=db.prepare("SELECT 1 FROM cash_sessions WHERE opened_by=? AND state='open'").get(req.params.user);if(pending)fail(409,'Cierra y sincroniza las cajas del usuario antes de cambiar su ruta.');db.prepare('INSERT INTO seller_routes VALUES (?,?) ON CONFLICT(user_id) DO UPDATE SET route_id=excluded.route_id').run(req.params.user,req.params.id);audit(db,req.user.id,'route.assign',req.params.user,{route_id:req.params.id});return {ok:true};})));
+ app.put('/api/routes/:id/customers/:customer',admin,validate(z.object({identification:z.string().trim().max(80).default('')})),(req,res)=>res.json(transaction(db,()=>{db.prepare('INSERT INTO customer_routes VALUES (?,?,?) ON CONFLICT(customer_id,route_id) DO UPDATE SET identification=excluded.identification').run(req.params.customer,req.params.id,req.input.identification);audit(db,req.user.id,'customer.route',req.params.customer,{route_id:req.params.id,...req.input});return {ok:true};})));
+ app.get('/api/inventory-groups',(_,res)=>res.json(db.prepare('SELECT g.*, (SELECT json_group_array(product_id) FROM product_groups p WHERE p.group_id=g.id) products FROM inventory_groups g ORDER BY name').all().map(g=>({...g,products:JSON.parse(g.products)}))));
+ app.post('/api/inventory-groups',admin,validate(z.object({name:text,unit:z.enum(['unit','kg'])})),(req,res)=>res.json(transaction(db,()=>{const g={id:id(),...req.input};db.prepare('INSERT INTO inventory_groups VALUES (?,?,?)').run(g.id,g.name,g.unit);audit(db,req.user.id,'inventory.group',g.id,g);return g;})));
+ app.put('/api/products/:id/group',admin,validate(z.object({group_id:uuid})),(req,res)=>res.json(transaction(db,()=>{
+ const p=db.prepare('SELECT * FROM products WHERE id=?').get(req.params.id),g=db.prepare('SELECT * FROM inventory_groups WHERE id=?').get(req.input.group_id);if(!p||!g||p.unit!==g.unit)fail(400,'El producto y el grupo deben tener la misma unidad.');
+ const old=db.prepare('SELECT group_id FROM product_groups WHERE product_id=?').get(p.id);if(old&&old.group_id!==g.id&&db.prepare('SELECT 1 FROM route_stock WHERE group_id=? AND available_milli>0').get(old.group_id))fail(409,'Agota o ajusta a cero las existencias del grupo anterior antes de mover el producto.');
+ db.prepare('INSERT INTO product_groups VALUES (?,?) ON CONFLICT(product_id) DO UPDATE SET group_id=excluded.group_id').run(p.id,g.id);audit(db,req.user.id,'product.group',p.id,{before:old,group_id:g.id});return {ok:true};})));
+ app.get('/api/inventory',(req,res)=>{const route=req.user.role==='admin'?String(req.query.route_id||''):routeFor(db,req.user)?.id||'';res.json({consumption:db.prepare("SELECT m.group_id,m.product_id,p.name,g.unit,COALESCE(-SUM(m.quantity_milli),0) quantity_milli FROM stock_movements m JOIN products p ON p.id=m.product_id JOIN inventory_groups g ON g.id=m.group_id WHERE m.route_id=? AND m.kind IN ('sale','void') GROUP BY m.group_id,m.product_id ORDER BY p.name").all(route),stock:db.prepare('SELECT s.*,g.name,g.unit,(SELECT COALESCE(-SUM(m.quantity_milli),0) FROM stock_movements m WHERE m.route_id=s.route_id AND m.group_id=s.group_id AND m.kind IN (\'sale\',\'void\')) sold_milli FROM route_stock s JOIN inventory_groups g ON g.id=s.group_id WHERE s.route_id=?').all(route),movements:db.prepare('SELECT m.*,p.name product_name,u.name actor_name,g.name group_name FROM stock_movements m JOIN users u ON u.id=m.actor_id JOIN inventory_groups g ON g.id=m.group_id LEFT JOIN products p ON p.id=m.product_id WHERE route_id=? ORDER BY m.rowid DESC LIMIT 500').all(route)});});
+ app.post('/api/inventory',admin,validate(z.object({route_id:uuid,group_id:uuid,quantity:z.string(),kind:z.enum(['assign','adjust']),note:text,expected_available_milli:z.number().int().nonnegative()})),(req,res)=>res.json(transaction(db,()=>{
+ const d=req.input,g=db.prepare('SELECT * FROM inventory_groups WHERE id=?').get(d.group_id);if(!g)fail(404,'Grupo no encontrado.');const qty=d.quantity==='0'?0:quantity(d.quantity,g.unit);const stock=db.prepare('SELECT * FROM route_stock WHERE route_id=? AND group_id=?').get(d.route_id,d.group_id);if((stock?.available_milli||0)!==d.expected_available_milli)fail(409,'El inventario cambió. Actualiza antes de ajustar.');
+ const delta=d.kind==='assign'?qty:qty-(stock?.available_milli||0);
+ if(!Number.isSafeInteger((stock?.available_milli||0)+delta)||(stock?.available_milli||0)+delta>100_000_000_000)fail(400,'Inventario fuera de rango.');
+ db.prepare('INSERT INTO route_stock VALUES (?,?,?,?) ON CONFLICT(route_id,group_id) DO UPDATE SET initial_milli=initial_milli+?,available_milli=available_milli+?').run(d.route_id,d.group_id,d.kind==='assign'?qty:0,qty,d.kind==='assign'?qty:0,delta);movement(db,req.user,d.route_id,d.group_id,delta,d.kind,d.note);audit(db,req.user.id,'inventory.'+d.kind,d.group_id,{...d,delta_milli:delta});return {ok:true};})));
+ app.get('/api/accounts/:id',(req,res)=>res.json(account(db,req.user,req.params.id)));
+ const collectionSchema=z.object({customer_id:uuid,session_id:uuid,amount:z.string(),method:z.enum(['cash','electronic']),note:z.string().trim().max(1000).default(''),request_key:uuid,allocations:z.array(z.object({sale_id:uuid,amount:z.string()})).max(100).optional()});
+ app.post('/api/collections',validate(collectionSchema),(req,res)=>res.json(transaction(db,()=>{
+ const d=req.input,hash=digest(JSON.stringify(d));const old=db.prepare('SELECT * FROM collections WHERE seller_id=? AND request_key=?').get(req.user.id,d.request_key);if(old){if(old.request_hash!==hash)fail(409,'Referencia utilizada con otros datos.');return old;}
+ const route=routeFor(db,req.user);if(!route)fail(400,'Asigna una ruta al usuario.');customerAccess(db,req.user,d.customer_id);
+ const session=db.prepare("SELECT * FROM cash_sessions WHERE id=? AND opened_by=? AND state='open'").get(d.session_id,req.user.id);if(!session)fail(409,'Abre tu caja antes de registrar abonos.');
+ const amount=money(d.amount);if(amount<=0)fail(400,'El abono debe ser mayor a cero.');
+ const invoices=account(db,req.user,d.customer_id).invoices.filter(s=>s.route_id===route.id&&s.balance_cents>0);let remaining=amount,allocations=[];
+ if(d.allocations){const seen=new Set();for(const a of d.allocations){const sale=invoices.find(s=>s.id===a.sale_id),value=money(a.amount);if(!sale||seen.has(a.sale_id)||value<=0||value>sale.balance_cents)fail(400,'Distribución de abono inválida.');seen.add(a.sale_id);allocations.push({sale_id:a.sale_id,amount:value});remaining-=value;}if(remaining!==0)fail(400,'La distribución debe sumar el abono.');}
+ else{for(const s of invoices){const value=Math.min(remaining,s.balance_cents);if(value>0)allocations.push({sale_id:s.id,amount:value});remaining-=value;}if(remaining>0)fail(400,'El abono supera la deuda pendiente.');}
+ const cid=id();db.prepare('INSERT INTO collections VALUES (?,?,?,?,?,?,?,?,?,?,?)').run(cid,d.customer_id,req.user.id,route.id,session.id,amount,d.method,d.note,d.request_key,hash,now());
+ for(const a of allocations)db.prepare('INSERT INTO collection_allocations VALUES (?,?,?)').run(cid,a.sale_id,a.amount);
+ audit(db,req.user.id,'collection.create',cid,{...d,route_id:route.id,allocations});return db.prepare('SELECT * FROM collections WHERE id=?').get(cid);
+ })));
+ app.get('/api/collections',(req,res)=>{let rows=db.prepare('SELECT c.*,u.name seller_name,r.name route_name,cu.name customer_name,v.created_at reversed_at FROM collections c JOIN users u ON u.id=c.seller_id JOIN routes r ON r.id=c.route_id JOIN customers cu ON cu.id=c.customer_id LEFT JOIN collection_reversals v ON v.collection_id=c.id ORDER BY c.created_at DESC').all();if(req.user.role!=='admin')rows=rows.filter(c=>c.seller_id===req.user.id);for(const field of ['seller_id','route_id','customer_id','method'])if(req.query[field])rows=rows.filter(c=>c[field]===req.query[field]);if(req.query.from)rows=rows.filter(c=>c.created_at>=String(req.query.from));if(req.query.to)rows=rows.filter(c=>c.created_at.slice(0,10)<=String(req.query.to));res.json(rows);});
+ app.post('/api/collections/:id/reverse',admin,validate(z.object({reason:text})),(req,res)=>res.json(transaction(db,()=>{const c=db.prepare('SELECT * FROM collections WHERE id=?').get(req.params.id);if(!c)fail(404,'Abono no encontrado.');if(db.prepare("SELECT state FROM cash_sessions WHERE id=?").get(c.session_id)?.state!=='open')fail(409,'La caja está cerrada; requiere conciliación administrativa antes de revertir.');if(db.prepare('SELECT 1 FROM collection_reversals WHERE collection_id=?').get(c.id))fail(409,'Abono ya revertido.');db.prepare('INSERT INTO collection_reversals VALUES (?,?,?,?)').run(c.id,req.user.id,req.input.reason,now());audit(db,req.user.id,'collection.reverse',c.id,req.input);return {ok:true};})));
+ app.post('/api/sales/:id/void',admin,validate(z.object({reason:text})),(req,res)=>res.json(transaction(db,()=>{
+ const s=db.prepare('SELECT * FROM sales WHERE id=?').get(req.params.id);if(!s)fail(404,'Factura no encontrada.');if(!db.prepare('SELECT 1 FROM sale_terms WHERE sale_id=?').get(s.id))fail(409,'Factura histórica: requiere conciliación manual de inventario antes de anular.');if(db.prepare('SELECT 1 FROM sale_voids WHERE sale_id=?').get(s.id))return {ok:true};if(db.prepare('SELECT state FROM cash_sessions WHERE id=?').get(s.session_id)?.state!=='open')fail(409,'No se puede anular una factura de una caja cerrada.');if(db.prepare('SELECT 1 FROM collection_allocations a LEFT JOIN collection_reversals r ON r.collection_id=a.collection_id WHERE sale_id=? AND r.collection_id IS NULL').get(s.id))fail(409,'Revierte primero los abonos de esta factura.');
+ const moves=db.prepare("SELECT * FROM stock_movements WHERE sale_id=? AND kind='sale'").all(s.id);for(const m of moves){db.prepare('UPDATE route_stock SET available_milli=available_milli-? WHERE route_id=? AND group_id=?').run(m.quantity_milli,m.route_id,m.group_id);movement(db,req.user,m.route_id,m.group_id,-m.quantity_milli,'void',req.input.reason,m.product_id,s.id);}
+ if(!db.prepare('SELECT route_id FROM sale_terms WHERE sale_id=? AND route_id IS NOT NULL').get(s.id))for(const i of db.prepare('SELECT * FROM sale_stock_effects WHERE sale_id=?').all(s.id))db.prepare('UPDATE products SET stock_milli=stock_milli+?,updated_at=? WHERE id=? AND stock_milli IS NOT NULL').run(i.quantity_milli,now(),i.product_id);
+ db.prepare('INSERT INTO sale_voids VALUES (?,?,?,?)').run(s.id,req.user.id,req.input.reason,now());audit(db,req.user.id,'sale.void',s.id,req.input);return {ok:true};
+ })));
+}

@@ -1,0 +1,168 @@
+# Actualización de ventas por ruta y terminal H10S
+
+Trabajo realizado sobre `deploy/backend-pos`, conservando Expo/React Native, Express, SQLite y la identidad visual existente. No se ejecutaron migraciones ni ventas contra la base del negocio: las verificaciones usan bases temporales.
+
+## Diagnóstico inicial
+
+La app tenía catálogo por unidad/KG, control global opcional de existencias, caja por vendedor/dispositivo, historial, PDF de 58/80 mm y ventas Android con SQLite local y sincronización. La impresión nativa disponible era Bluetooth Classic SPP/ESC-POS; no era una integración demostrada con la impresora interna de Neotek.
+
+La sincronización anterior aceptaba faltantes de inventario para conciliar posteriormente. Ese comportamiento no garantiza exclusión entre dos terminales desconectadas. Las nuevas ventas por ruta, crédito y abonos requieren conexión al servidor. Las operaciones sin ruta conservan su funcionamiento anterior. El servidor rechaza eventos de venta offline de usuarios que ya tengan una ruta asignada.
+
+## Implementación
+
+- Productos: varios códigos de texto por producto, internos o de barras, ceros iniciales, validación de duplicados sin distinguir mayúsculas, edición y auditoría de códigos anteriores/nuevos. Los productos existentes pueden seguir sin código hasta que el administrador los configure.
+- Ventas: buscador vacío sin catálogo, nombres/códigos, coincidencia exacta de código prioritaria, cantidad explícita por unidad/KG, resumen visible y editable, validación del consumo acumulado del grupo y confirmación con referencia persistente.
+- Rutas: asignación de usuarios/clientes, identificación del cliente, grupos de inventario de la misma unidad, cargas adicionales y ajustes con motivo y control de concurrencia. Para inventario independiente, crear un grupo con un solo producto.
+- Existencias: aislamiento por ruta, descuento transaccional compartido, bloqueo de faltantes, movimientos con usuario/fecha/producto/factura y consumo neto por producto. Las asignaciones por ruta no copian ni consumen automáticamente el inventario global anterior.
+- Crédito: importe inicial opcional, saldo y estado derivados de pagos efectivos. El vendedor no fija precios: el servidor los obtiene del catálogo y compara los precios esperados.
+- Abonos: vendedor de la ruta, caja propia abierta, efectivo/electrónico, observaciones, distribución por antigüedad o factura elegida, historial y filtros administrativos. Se rechazan exceso sobre deuda, distribuciones inválidas y referencias repetidas con otro contenido. El cuerpo de un abono pendiente se conserva para reintentar tras recarga.
+- Anulaciones y reversiones: registros compensatorios auditados, sin modificar comprobantes originales. Para anular, primero revertir los abonos asociados. Solo se permite anular/revertir mientras la caja de origen siga abierta; una caja cerrada requiere un flujo adicional de conciliación administrativa. La anulación automática de ventas históricas anteriores a esta actualización está bloqueada porque no existe evidencia fiable del stock descontado en su emisión. Las facturas emitidas se corrigen mediante anulación y una nueva venta, sin edición destructiva.
+- Caja: incorpora recaudos y resta anulaciones/reversiones de la conciliación actual. El total de ventas se mantiene separado del recaudo adicional. Los abonos electrónicos tienen una categoría de conciliación propia.
+- PDF: 58 mm físicos, contenido de 48 mm para márgenes del papel, altura medida antes de dibujar, ruta, subtotal, total, abono/saldo inicial de crédito, recibido/cambio cuando se envían. Los documentos guardados permanecen inmutables: el saldo actual se consulta en cartera. Las instalaciones nuevas usan 58 mm por defecto; no se sobrescribe la configuración existente.
+
+## Base de datos
+
+Migración aditiva e idempotente en `server/src/commerce-schema.sql`, ejecutada por `openDatabase`:
+
+`routes`, `seller_routes`, `customer_routes`, `product_codes`, `inventory_groups`, `product_groups`, `route_stock`, `stock_movements`, `sale_terms`, `sale_voids`, `collections`, `collection_allocations`, `collection_reversals`, `sale_stock_effects`.
+
+No elimina ni reconstruye tablas existentes. Los movimientos, términos, anulaciones, abonos, distribuciones, reversiones y efectos de stock quedan protegidos contra UPDATE/DELETE. Los saldos se calculan desde esos registros. SQLite usa BEGIN IMMEDIATE para validar y descontar inventario/registrar cartera en la misma transacción, evitando que dos confirmaciones consuman el mismo saldo.
+
+## Actualización de una instalación
+
+1. Sincronizar todas las terminales y cerrar sus cajas antes de asignar rutas. No asignar rutas mientras existan ventas locales pendientes. Guardar el APK y la clave de firma usados actualmente.
+2. Ejecutar `npm run backup` contra la configuración correcta del servidor y guardar la copia fuera del equipo.
+3. Instalar dependencias con `npm ci`. Actualizar primero el backend y reiniciarlo; la apertura de la base crea las tablas nuevas. No sustituir la base por una de pruebas.
+4. Configurar productos/códigos, rutas, clientes e identificaciones desde Catálogo y el botón “Rutas y abonos” del encabezado. Asociar cada producto a un grupo de su misma unidad y cargar stock para cada ruta.
+5. Asignar los vendedores a sus rutas con las cajas cerradas y volver a iniciar sesión en las terminales. Verificar los saldos iniciales con el inventario físico. El inventario global anterior se conserva, pero no se interpreta como carga de una ruta.
+6. Reconstruir Android con el mismo identificador `com.ventapos.mobile` y el certificado de la instalación anterior; seleccionar un versionCode superior al instalado una vez conocido. No desinstalar para resolver una incompatibilidad de firma: se perderían datos locales.
+7. Realizar las pruebas físicas descritas abajo antes de poner esta versión en operación.
+
+## Lector físico
+
+Se implementó recepción por campo de búsqueda y terminador Enter. El módulo Android existente incorpora además captura de eventos de teclado físico a través de Window.Callback mientras la pantalla de venta está activa. Acepta Enter, Enter numérico y Tab; conserva el código como texto. Las lecturas se emiten a la app y no se insertan en campos de cantidad/pago/cliente. Si hay un formulario abierto, la app solicita terminarlo antes de recibir otro producto. El teclado táctil permanece disponible para cantidades y digitación manual.
+
+Este adaptador cubre lectores que generan KeyEvent de teclado. No demuestra cómo está configurada esta unidad H10S: un lector que escriba mediante InputConnection, intents propietarios o SDK exige su documentación y una integración adicional. No se inventaron nombres de intents ni APIs del fabricante. La captura Kotlin no ha sido compilada ni probada físicamente en esta sesión. El recorrido web con terminador de teclado es una prueba de software; no constituye evidencia del lector H10S.
+
+## Impresora
+
+El PDF de 58 mm y la impresión son caminos distintos. Android conserva Bluetooth ESC/POS si se configura una impresora compatible; sin esa configuración, las ventas por ruta ofrecen el PDF al servicio de impresión de Android. Esto solo imprime en la integrada si el firmware tiene un servicio compatible instalado.
+
+La investigación posterior identificó la H10S de Senraise y bindings públicos para su servicio interno. No se confirmó que Neotek utilice ese fabricante/firmware. La integración directa en esta unidad sigue pendiente de identificar el servicio instalado y contrastar la interfaz, como se detalla abajo. No se afirma que Bluetooth controle la impresora interna ni que abrir el diálogo de Android equivalga a imprimir.
+
+## Instalación Android: evidencia y diagnóstico
+
+La inspección de la configuración generada y de las dependencias muestra:
+
+- applicationId/namespace: `com.ventapos.mobile`, conservado.
+- minSdk: 24; targetSdk: 36; compileSdk: 37. Android 13 es API 33, por lo que el mínimo declarado no lo excluye.
+- ABIs declaradas: `armeabi-v7a,arm64-v8a,x86,x86_64`. No se verificaron bibliotecas de un APK final ni las ABIs del dispositivo.
+- versionCode: 1; versionName: 1.0.0, conservados hasta conocer la instalación anterior.
+- El script local produce una compilación de prueba con firma de desarrollo. Una instalación previa con otro certificado puede requerir recuperar la clave anterior. No se ha confirmado que ese sea el error reportado.
+- No había JDK/Android SDK de compilación disponibles. Se descargaron las herramientas oficiales Platform Tools a `tmp/platform-tools` para consultar ADB. `adb devices -l` no encontró equipos conectados.
+
+No se generó un APK sustitutivo: todavía no se conoce la causa exacta del rechazo del instalador, como exige el requerimiento. Tampoco se comprobó la apertura de la app en Android 13.
+
+Con la H10S conectada y autorizada:
+
+```sh
+node scripts/diagnose-android.mjs
+# Si hay más de un dispositivo:
+ANDROID_SERIAL=SERIAL_DE_LA_H10S node scripts/diagnose-android.mjs
+# Obtener el error exacto del APK que ya está fallando, sin borrar datos:
+tmp/platform-tools/adb install -r /ruta/al/apk-que-falla.apk
+```
+
+El script guarda propiedades (SDK, ABI, fabricante/modelo), paquete instalado, servicios de impresión, servicios del sistema y almacenamiento en `output/android-diagnostic`. El diagnóstico puede contener identificadores del equipo; revisarlo antes de compartir.
+
+Interpretar el resultado antes de modificar versiones:
+
+- `INSTALL_FAILED_NO_MATCHING_ABIS`: comparar `ro.product.cpu.abilist` con las bibliotecas del APK.
+- `INSTALL_FAILED_OLDER_SDK`: comparar minSdk del APK con API del dispositivo.
+- `INSTALL_FAILED_UPDATE_INCOMPATIBLE`: comparar certificados y recuperar la firma anterior.
+- `INSTALL_FAILED_VERSION_DOWNGRADE`: comparar versionCode y publicar una actualización con valor superior.
+- `INSTALL_FAILED_USER_RESTRICTED`: revisar autorización de instalación y políticas del equipo.
+
+Para el APK que falla, usar las herramientas Android SDK `apkanalyzer manifest print`, `apkanalyzer files list` y `apksigner verify --print-certs`. No cambiar applicationId, no ejecutar `pm clear`, no desinstalar ni forzar downgrade como atajo.
+
+Fuentes: [ADB oficial](https://developer.android.com/tools/adb), [soporte de arquitecturas](https://developer.android.com/games/optimize/64-bit), [compatibilidad de Expo](https://docs.expo.dev/versions/v58.0.0/). Las versiones del proyecto se contrastaron también con archivos instalados de React Native y Expo Autolinking.
+
+## Verificación y entregables
+
+- Backend: `npm test`; incluye rutas, códigos duplicados con rollback, suma de productos de un mismo grupo, separación entre rutas, dos solicitudes concurrentes con stock insuficiente, reintento idempotente, pagos parciales/final, exceso de abono, permisos, reversión y restitución al anular. Conserva las pruebas anteriores de operación offline sin ruta.
+- App: `npm run check` y `npm run test:e2e`. E2E utiliza base temporal y revisa el flujo existente y el nuevo flujo por ruta. Capturas en `output/screenshots`.
+- Dependencias: `npm exec -w mobile -- expo install --check` y `npm run doctor`.
+- JavaScript Android: `npm exec -w mobile -- expo export --platform android --output-dir ../output/android-bundle`. Esto no es una compilación nativa ni un APK.
+- Muestras: `node scripts/receipt-examples.mjs` genera tres PDF sin crear ventas: un producto, varios y crédito. Ancho 164,409 pt = 58 mm, una página cada uno; alturas distintas. Revisados con pdfinfo y renderizado Poppler.
+
+Pendientes de aceptación: compilación nativa del manejador del lector, causa exacta del instalador, APK firmado con continuidad de actualización, instalación/apertura, lector real con lecturas consecutivas y cantidades, servicio/SDK de la impresora interna, impresión física legible y venta completa en la H10S. Sin esas verificaciones, la actualización no se considera terminada para producción en ese modelo.
+
+## Investigación adicional del hardware
+
+La [ficha oficial Senraise H10S](https://www.senraise.com/products/senraise-h10s-handheld-pos-terminal.html) confirma Android 13, procesador MTK de cuatro núcleos, escáner 1D/2D y térmica integrada de 58 mm. Su [FAQ oficial](https://www.senraise.com/faq.html) confirma soporte SDK/API. Esto identifica un candidato de fabricante; no acredita que la unidad marcada Neotek use su firmware. No se encontró una ficha o manual Neotek H10S que vincule inequívocamente ambas marcas.
+
+El [portal de descarga de Senraise](https://www.senraise.com/download.html) solicita correo y código de verificación. No se envió correo ni se registró una cuenta.
+
+Se revisó el código fuente de [SenraiseLib](https://github.com/abdalla19977/SenraiseLib), revisión `cc30c73507e3067e7bd4f734c25cb43505d0ebfb`, y del [adaptador POS que declara pruebas en H10s](https://github.com/abdalla19977/pos_printer), revisión `da94be99e4445aea3ec77e0827890d2fb2eb89c0`. El código publicado usa Android Binder/AIDL para conectarse a:
+
+- Paquete: `recieptservice.com.recieptservice`.
+- Servicio: `recieptservice.com.recieptservice.service.PrinterService`.
+- Interfaz: `recieptservice.com.recieptservice.PrinterInterface`.
+- Operaciones de impresión de texto/bitmap, tamaño, alineación, avance de papel y comandos ESC/POS.
+
+Estas son evidencias del mecanismo utilizado por esos proyectos, no una certificación para el firmware Neotek. No se añadieron dependencias de Flutter/Capacitor a Expo ni se copió un SDK sin confirmar compatibilidad. El diagnóstico ADB ahora inspecciona expresamente ese paquete. Si está instalado, el siguiente paso es verificar su versión e interfaz y adaptar el módulo Kotlin existente para ese servicio; si no existe, se debe seguir la interfaz real del firmware.
+
+No se localizó un contrato público inequívoco de eventos de escaneo para Neotek H10S. El adaptador de teclado físico queda implementado para el modo wedge, pendiente de comprobar el modo real.
+
+## Resultados registrados
+
+`npm test`: 17 pruebas aprobadas. `npm run check`: aprobado. `expo install --check`: dependencias alineadas. `expo-doctor`: 20/20 comprobaciones aprobadas. E2E completo aprobado: flujo anterior y nuevo recorrido de ruta con código `0001`, terminador Enter, peso/unidades, venta a crédito, dos abonos y estado PAGADA; captura y control de desbordamiento a 320, 360, 390, 430, 768 y 1280 px.
+
+Las tres muestras de una página tienen ancho 164,409 pt (58 mm) y alturas de 435,573 / 491,109 / 540,645 pt, respectivamente. Se revisaron visualmente los tres renderizados.
+
+Se aplicaron actualizaciones compatibles de dependencias transitivas tras la auditoría npm. Se corrigió el hallazgo alto de body-parser; quedan cinco hallazgos moderados en la cadena de herramientas Expo/glob/minimatch. No se aplicó el downgrade a Expo 53 sugerido por audit --force.
+
+## Historial de crédito
+
+El listado de ventas incluye las facturas a crédito sin abono inicial, distingue el filtro Crédito y muestra anulaciones. Sus totales agrupados usan el importe facturado y excluyen importes anulados; los recaudos permanecen en su módulo.
+
+## Archivos cambiados en esta rama de trabajo
+
+Incluye los ajustes Expo que ya estaban pendientes al iniciar y los cambios de esta actualización:
+
+- `README.md`
+- `docs/ACTUALIZACION-H10S.md`
+- `docs/IMPRESION.md`
+- `mobile/.env.example`
+- `mobile/App.tsx`
+- `mobile/modules/pos-printer/android/src/main/java/expo/modules/posprinter/PosPrinterModule.kt`
+- `mobile/package.json`
+- `mobile/src/CatalogScreen.tsx`
+- `mobile/src/HistoryScreen.tsx`
+- `mobile/src/HomeScreen.tsx`
+- `mobile/src/OperationsScreen.tsx`
+- `mobile/src/Receipt.tsx`
+- `mobile/src/SaleScreen.tsx`
+- `mobile/src/api.ts`
+- `mobile/src/offline/runtime.native.ts`
+- `mobile/src/printing/receipt.js`
+- `mobile/src/scanner.ts`
+- `mobile/src/transport.ts`
+- `mobile/src/types.ts`
+- `package-lock.json`
+- `package.json`
+- `pnpm-lock.yaml`
+- `scripts/diagnose-android.mjs`
+- `scripts/e2e.mjs`
+- `scripts/receipt-examples.mjs`
+- `server/src/app.js`
+- `server/src/commerce-schema.sql`
+- `server/src/commerce.js`
+- `server/src/db.js`
+- `server/src/pdf.js`
+- `server/src/schema.sql`
+- `server/src/service.js`
+- `server/src/sync.js`
+- `server/src/validation.js`
+- `server/test/commerce.test.js`
+- `server/test/receipt.test.js`

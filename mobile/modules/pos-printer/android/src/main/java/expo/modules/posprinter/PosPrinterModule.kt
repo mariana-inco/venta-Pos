@@ -3,6 +3,8 @@ package expo.modules.posprinter
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothSocket
 import android.content.Context
+import android.view.KeyEvent
+import android.view.Window
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import java.nio.charset.Charset
@@ -20,8 +22,55 @@ class PosPrinterModule : Module() {
   private fun adapter() = (appContext.reactContext?.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
     ?: throw IllegalStateException("Este equipo no dispone de Bluetooth.")
 
+  private var scannerWindow: Window? = null
+  private var originalCallback: Window.Callback? = null
+  private var scannerCallback: Window.Callback? = null
+  private fun scanner(enabled: Boolean) {
+    val activity = appContext.currentActivity ?: return
+    activity.runOnUiThread {
+      if (!enabled) {
+        if (scannerWindow?.callback === scannerCallback) scannerWindow?.callback = originalCallback
+        scannerWindow = null; originalCallback = null; scannerCallback = null
+      } else if (scannerCallback == null) {
+        val window = activity.window
+        val original = window.callback
+        val consumed = mutableSetOf<Int>()
+        var buffer = StringBuilder()
+        var lastKey = 0L
+        val callback = object : Window.Callback by original {
+          override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+            // Hardware wedge only. Touch keyboard/IME input remains available for quantities.
+            if (event.flags and KeyEvent.FLAG_SOFT_KEYBOARD != 0 || event.isCtrlPressed || event.isAltPressed) return original.dispatchKeyEvent(event)
+            if (event.action == KeyEvent.ACTION_UP && consumed.remove(event.keyCode)) return true
+            if (event.action != KeyEvent.ACTION_DOWN) return original.dispatchKeyEvent(event)
+            val char = event.unicodeChar
+            if (event.keyCode == KeyEvent.KEYCODE_ENTER || event.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER || event.keyCode == KeyEvent.KEYCODE_TAB) {
+              if (buffer.isEmpty()) return original.dispatchKeyEvent(event)
+              val code = buffer.toString(); buffer = StringBuilder()
+              consumed.add(event.keyCode)
+              sendEvent("barcodeScan", mapOf("code" to code))
+              return true
+            }
+            if (char in 32..126) {
+              if (event.eventTime - lastKey > 2000) buffer = StringBuilder()
+              lastKey = event.eventTime
+              if (buffer.length < 80) buffer.append(char.toChar()) else buffer = StringBuilder()
+              consumed.add(event.keyCode)
+              return true
+            }
+            return original.dispatchKeyEvent(event)
+          }
+        }
+        originalCallback = original; scannerCallback = callback; scannerWindow = window
+        window.callback = callback
+      }
+    }
+  }
+
   override fun definition() = ModuleDefinition {
     Name("PosPrinter")
+    Events("barcodeScan")
+    AsyncFunction("setScannerEnabled") { enabled: Boolean -> scanner(enabled) }
     AsyncFunction("pairedDevices") {
       val bt = adapter()
       check(bt.isEnabled) { "Activa Bluetooth en Ajustes de Android." }
@@ -58,6 +107,6 @@ class PosPrinterModule : Module() {
         } finally { try { socket?.close() } catch (_: Exception) {} }
       }
     }
-    OnDestroy { spool.shutdownNow(); watchdog.shutdownNow() }
+    OnDestroy { scanner(false); spool.shutdownNow(); watchdog.shutdownNow() }
   }
 }

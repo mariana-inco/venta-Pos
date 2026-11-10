@@ -24,3 +24,12 @@ test('Comprobante: kg decimales, unidades, nombres largos, muchos artículos y a
   }
  }
 });
+
+test('58 mm: página única, altura dinámica y crédito con nombres largos',async()=>{
+ const one=sale([item('Gaseosa','unit','3000','5')]);
+ const many=sale(Array.from({length:20},()=>item('Pollo entero y presentaciones de nombre largo para comprobar ajuste','kg','12000','2.5')),{credit:true,initial_paid_cents:15000000,initial_balance_cents:45000000,route_name:'Ruta de prueba'});
+ const a=await receiptPdf(one,58),b=await receiptPdf(many,58);
+ const height=pdf=>Number(/\/MediaBox \[0 0 [\d.]+ ([\d.]+)/.exec(pdf.toString('latin1'))[1]);
+ assert.ok(height(b)>height(a));assert.equal((b.toString('latin1').match(/\/Type \/Page\b/g)||[]).length,1);
+ assert.ok(Math.abs(mediaWidth(b)-58*72/25.4)<0.01);
+});

@@ -36,7 +36,7 @@ export async function activateLocal(user:User,token:string){
  s.profile({...user,blocked:false});
  // A valid catalogue is mandatory before first offline use; never claim ready early.
  const catalog=await remote<any>('/sync/catalog','GET',undefined,grant.token);
- s.applyCatalog(catalog);
+ s.applyCatalog(catalog);s.setMeta('route-'+user.id,catalog.route||null);
  await SecureStore.setItemAsync(prefix+'-active',JSON.stringify(user));
  try{await BackgroundTask.registerTaskAsync(TASK,{minimumInterval:15});}catch{notice='Android no habilitó la tarea de fondo; sincronizaremos al abrir la app y mientras esté activa.';}
  void syncNow();
@@ -50,6 +50,10 @@ export async function restoreLocal():Promise<User|null>{
 export async function forgetLocal(){await store();await SecureStore.deleteItemAsync(prefix+'-active');}
 export async function localRequest(user:User,path:string,method:string,body?:unknown){
  const s=await store();
+ const route=s.meta('route-'+user.id);
+ if(path==='/route'&&method==='GET'){try{const token=await SecureStore.getItemAsync('pos-token')||'';const currentRoute=await remote<any>('/route','GET',undefined,token,5000);s.setMeta('route-'+user.id,currentRoute);return {handled:true,value:currentRoute};}catch(e){if(!(e instanceof ApiError)||e.status!==0)throw e;return {handled:true,value:route||null};}}
+ if(route)return {handled:false};
+ const sessionMatch=path.match(/^\/cash-sessions\/([^/?]+)/);if(sessionMatch&&!s.get('session',sessionMatch[1]))return {handled:false};
  if(path==='/sales'&&method==='POST'&&body&&typeof body==='object'&&'session_id' in body&&!s.get('session',String(body.session_id)))return {handled:false};
  let value;
  try{value=s.request(user,path,method,body);}catch(e){if(e instanceof Error && 'status' in e)throw new ApiError(e.message,Number(e.status),`${method} ${path}`);throw e;}
