@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "DANNY'S POS",
+    "name": "Dok Pollo MC",
     "slug": "venta-pos",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "scheme": "ventapos",
@@ -16,7 +16,7 @@
     "android": {
       "package": "com.ventapos.mobile",
       "allowBackup": false,
-      "versionCode": 2
+      "versionCode": 3
     },
     "plugins": [
       "expo-secure-store",
@@ -26,13 +26,14 @@
     ],
     "web": {
       "bundler": "metro",
-      "favicon": "./assets/brand/dannys-logo.png",
-      "name": "DANNY'S POS",
+      "favicon": "./assets/brand/dok-pollo-mc.png",
+      "name": "Dok Pollo MC",
       "themeColor": "#1E7A3C"
     },
     "platforms": [
       "android",
       "web"
-    ]
+    ],
+    "icon": "./assets/brand/dok-pollo-mc.png"
   }
 }

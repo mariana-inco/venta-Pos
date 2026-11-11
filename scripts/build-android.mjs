@@ -18,6 +18,6 @@ function run(cmd,args,cwd){const r=spawnSync(cmd,args,{cwd,env,stdio:'inherit'})
 run('npm',['exec','-w','mobile','--','expo','prebuild','--platform','android','--no-install'],root);
 run(process.platform==='win32'?'gradlew.bat':'./gradlew',[':app:assembleRelease','--console=plain',...(env.POS_ANDROID_ARCH?[`-PreactNativeArchitectures=${env.POS_ANDROID_ARCH}`]:[])],join(root,'mobile/android'));
 mkdirSync(join(root,'output'),{recursive:true});
-const out=resolve(root,'output/dannys-pos-preview.apk');
+const out=resolve(root,'output/dok-pollo-mc-preview.apk');
 copyFileSync(join(root,'mobile/android/app/build/outputs/apk/release/app-release.apk'),out);
 console.log(`APK de prueba local (firma de desarrollo, JS incluido): ${out}`);

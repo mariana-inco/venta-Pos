@@ -9,7 +9,8 @@ export function LoginScreen({busy,onSubmit}:{busy:boolean;onSubmit:(username:str
  const submit=()=>{if(ready){onSubmit(username.trim(),password);setPassword('');}};
  return <Page>
   <View style={{alignItems:'center',gap:10,marginTop:24}}>
-   <Logo width={190}/>
+   <Logo width={150}/>
+   <Text style={[styles.h2,{textAlign:'center'}]}>Dok Pollo MC</Text>
    <Text style={[styles.eyebrow,{marginTop:6}]}>PUNTO DE VENTA</Text>
    <Text style={[styles.muted,{textAlign:'center'}]}>Ventas, caja y clientes de tu negocio, desde el celular.</Text>
   </View>

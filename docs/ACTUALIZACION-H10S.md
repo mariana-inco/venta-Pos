@@ -177,3 +177,11 @@ Incluye los ajustes Expo que ya estaban pendientes al iniciar y los cambios de e
 6. Abrir DANNY'S POS y comprobar «Versión 1.1.0» y «Servidor: https://backend-pos.dromos.co/» en el acceso.
 
 Verificación de esta entrega: TypeScript correcto, compilación nativa correcta, firma v2 válida, applicationId conservado, minSdk 24, targetSdk 36, compileSdk 37 y ambas ABIs ARM presentes. El APK incluye el adaptador de lector por teclado físico. Su funcionamiento real y la impresión interna siguen pendientes de prueba en la H10S.
+
+## Identidad de aplicación — Dok Pollo MC 1.1.1
+
+El nombre visible de la aplicación Android/web, el ícono del lanzador, la imagen de acceso/configuración, el encabezado y la prueba de impresión ahora usan Dok Pollo MC y el pollo suministrado por el usuario. El PNG original se conserva sin alteraciones en `mobile/assets/brand/dok-pollo-mc.png`. Se conserva `com.ventapos.mobile`; versionCode 3 y versionName 1.1.1. El script genera `output/dok-pollo-mc-preview.apk`.
+
+Esta actualización cambia la identidad de la aplicación. Los datos comerciales configurados del negocio y los comprobantes históricos se conservan. No requiere migración ni despliegue del backend. Para instalar por LocalSend, usar `output/dok-pollo-mc-1.1.1-neotek.apk` y comprobar «Versión 1.1.1» en el acceso.
+
+Verificación: TypeScript y compilación nativa correctos; etiqueta Android «Dok Pollo MC», minSdk 24, targetSdk 36, ABIs ARM32/ARM64 y firma v2 verificadas. Certificado SHA-256 idéntico al APK 1.1.0: `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`. APK SHA-256: `75c2f6234f2277e1dd3715240b577b7a880f0826ad0815ac9efc756277b5ed6c`. Acceso web verificado con el nombre, imagen cargada, versión y servidor de producción. Instalación física pendiente.

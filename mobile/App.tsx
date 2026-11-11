@@ -48,12 +48,12 @@ function Main(){
  const errorBanner=error&&<View style={local.bannerWrap}><Banner text={error.text} detail={error.detail} onClose={()=>setError(null)}/></View>;
  if(!user)return <SafeAreaView style={local.root} edges={['top','left','right','bottom']}><StatusBar style="dark"/><ProgressBar active={busy}/>{errorBanner}
   <LoginScreen busy={busy} onSubmit={(username,password)=>run(async()=>{const u=await signIn(username,password);setUser(u);setTab('home');await refresh();})}/></SafeAreaView>;
- const brand=/DANNY/i.test(settings.business_name)?"DANNY'S":settings.business_name;
+ const brand='Dok Pollo MC';
  return <SafeAreaView style={local.root} edges={['top','left','right','bottom']}><StatusBar style="dark"/>
   <View style={local.top}>
    <Pressable accessibilityRole="button" accessibilityLabel="Ir a inicio" onPress={()=>go('home')} style={local.brandGroup}>
     <Logo width={46}/>
-    <View style={{flexShrink:1}}><Text numberOfLines={1} style={local.brandText}>{brand}</Text>{width>=390&&<Text numberOfLines={1} style={local.brandSub}>Distribuidora & Salsamentaria</Text>}</View>
+    <View style={{flexShrink:1}}><Text numberOfLines={2} style={local.brandText}>{brand}</Text>{width>=390&&<Text numberOfLines={1} style={local.brandSub}>Punto de venta</Text>}</View>
    </Pressable>
    <Pressable testID="cash-status" accessibilityRole="button" accessibilityLabel={own?'Caja abierta, ver caja':'Caja cerrada, abrir caja'} onPress={()=>go('cash')} style={[local.cashPill,{backgroundColor:own?colors.greenSoft:colors.orangeSoft}]}>
     <View style={[local.dot,{backgroundColor:own?colors.green:colors.orange}]}/><Text numberOfLines={1} style={[local.cashText,{color:own?colors.greenDark:colors.orange}]}>{own?`Caja${own.number?' #'+own.number:''}`:'Sin caja'}</Text>

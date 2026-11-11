@@ -5,7 +5,7 @@ import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {fitSize} from './format';
 export * from './format';
 
-// Identidad DANNY'S: verde corporativo del logo, superficies blancas y acentos amarillo/naranja con moderación.
+// Colores existentes de la interfaz; la identidad de la aplicación es Dok Pollo MC.
 export const colors = {
   bg: '#F3F6F2', surface: '#FFFFFF', ink: '#14271B', text: '#3D4D42', muted: '#66756B', line: '#E1E7E2', lineStrong: '#CBD5CD',
   green: '#1E7A3C', greenDark: '#145A2B', greenSoft: '#E6F2E8', greenLine: '#C9E2CF',
@@ -20,10 +20,10 @@ const toneColors: Record<Tone, {bg: string; fg: string}> = {
   gray: {bg: '#EEF1EE', fg: colors.text}, yellow: {bg: colors.yellowSoft, fg: '#7A5600'},
 };
 
-const LOGO = require('../assets/brand/dannys-logo.png');
-/** Logo oficial, siempre con su proporción original (469×400). */
+const LOGO = require('../assets/brand/dok-pollo-mc.png');
+/** Ícono suministrado por el negocio, conservando su proporción cuadrada. */
 export function Logo({width = 44}: {width?: number}) {
-  return <Image source={LOGO} accessibilityLabel="Logo Distribuidora & Salsamentaria Danny's" resizeMode="contain" style={{width, height: Math.round(width * 400 / 469)}}/>;
+  return <Image source={LOGO} accessibilityLabel="Logo Dok Pollo MC" resizeMode="contain" style={{width, height: width}}/>;
 }
 
 // ── Pila de "atrás": hojas y subpantallas registran su cierre para el botón físico de Android.

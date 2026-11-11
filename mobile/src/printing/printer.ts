@@ -23,4 +23,4 @@ export async function printText(text:string){
  const module=await permitted();
  const job=tail.catch(()=>{}).then(()=>module.print(config.address,text,config.codePage,config.charset));tail=job;await job;
 }
-export async function testPrinter(){await printText("DANNY'S POS\nPRUEBA DE IMPRESIÓN\nÁÉÍÓÚ áéíóú Ñ ñ\nPollo 1,5 kg\nTotal $ 36.000\nSin venta registrada\n");}
+export async function testPrinter(){await printText("Dok Pollo MC\nPRUEBA DE IMPRESIÓN\nÁÉÍÓÚ áéíóú Ñ ñ\nPollo 1,5 kg\nTotal $ 36.000\nSin venta registrada\n");}
