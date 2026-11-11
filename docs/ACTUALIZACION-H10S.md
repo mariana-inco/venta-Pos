@@ -203,3 +203,5 @@ Despliegue de tickets: Coolify `rc2tewptvptn5xtcrmpbquda`, commit `25a080eb2ef63
 Rediseño 1.1.3: `output/dok-pollo-mc-1.1.3-neotek.apk`, versionCode 5, mismo certificado (SHA-256 `fac61745…3b9c`). Sistema visual Dok Pollo MC (marfil, carbón y acento morado), cabecera con estado de sincronización, navegación que se oculta en el cobro y con el teclado, Historial con filtros compactos y pantalla de venta registrada que separa guardado, sincronización e impresión. Verificado en navegador (E2E 320–1280 px, sin desplazamiento horizontal); pendiente revisar en la Neotek el tamaño real, el teclado y la impresión.
 
 APK 1.1.4: `output/dok-pollo-mc-1.1.4-neotek.apk`, versionCode 6, mismo certificado. Nombre visible DOK POLLO MC y acciones principales en morado de marca, con superficies neutras.
+
+APK 1.1.5: `output/dok-pollo-mc-1.1.5-neotek.apk`, versionCode 7. Corrige el cierre al iniciar en compilación release: R8 eliminaba el constructor de la base Room de WorkManager (expo-background-task). Reglas en `mobile/plugins/with-release-keep-rules.cjs`. Verificado en TECNO CM6 (Android 16): abre, sincroniza y recorre las cinco pestañas sin errores.
