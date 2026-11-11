@@ -20,6 +20,7 @@ export const DEFAULT_BUSINESS_NAME = "Dok Pollo MC";
 export const BUSINESS_FIELDS = ['business_nit','business_address','business_phone','business_city'];
 function migrate(db) {
  db.exec(readFileSync(new URL('./commerce-schema.sql', import.meta.url), 'utf8'));
+ db.exec(readFileSync(new URL('./users-schema.sql', import.meta.url), 'utf8'));
  const cashColumns = new Set(db.prepare('PRAGMA table_info(cash_sessions)').all().map(c => c.name));
  if (!cashColumns.has('device_id')) db.exec('ALTER TABLE cash_sessions ADD COLUMN device_id TEXT');
  db.exec('DROP INDEX IF EXISTS one_open_session');

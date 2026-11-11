@@ -4,7 +4,7 @@ const text = (max=120) => z.string().trim().min(1).max(max);
 const decimal = z.string().regex(/^\d{1,10}([.,]\d{1,3})?$/);
 export const schemas = {
  login:z.object({username:text(40),password:z.string().min(1).max(128)}),
- user:z.object({username:z.string().regex(/^[a-zA-Z0-9_.-]{3,40}$/),name:text(),password:z.string().min(12).max(128),role:z.enum(['admin','seller'])}),
+ user:z.object({username:z.string().trim().regex(/^[a-zA-Z0-9_.-]{3,40}$/),name:text(),password:z.string().min(12).max(128),role:z.enum(['admin','seller']),route_id:z.string().uuid().nullable().optional()}),
  userStatus:z.object({active:z.boolean()}),
  password:z.object({password:z.string().min(12).max(128)}),
  product:z.object({codes:codeSchema.optional(),name:text(),price:decimal,unit:z.enum(['unit','kg']),active:z.boolean().default(true),stock:decimal.nullable().default(null),expected_stock_milli:z.number().int().nullable().optional(),expected_updated_at:z.string().optional()}),

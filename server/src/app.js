@@ -1,3 +1,4 @@
+import {mountUsers} from './users.js';
 import {mountCommerce,productsFor,saveCodes,codesFor,routeFor,balance} from './commerce.js';
 import express from 'express';
 import {mountSync, mountDeviceAdmin} from './sync.js';
@@ -27,9 +28,10 @@ export function createApp(db) {
  mountSync(app,db);
  app.use('/api',authenticate(db));
  mountDeviceAdmin(app,db);
+ mountUsers(app,db);
  app.get('/api/me',(req,res)=>res.json(req.user));
  app.post('/api/auth/logout',(req,res)=>{db.prepare('DELETE FROM auth_sessions WHERE token_hash=?').run(req.tokenHash);audit(db,req.user.id,'auth.logout',req.user.id);res.json({ok:true});});
- app.get('/api/users',admin,(_,res)=>res.json(db.prepare('SELECT id,name,username,role,active FROM users ORDER BY name').all()));
+ app.get('/api/users',admin,(_,res)=>res.json(db.prepare('SELECT u.id,u.name,u.username,u.role,u.active,r.route_id FROM users u LEFT JOIN seller_routes r ON r.user_id=u.id ORDER BY u.name').all()));
  app.post('/api/users',admin,validate(schemas.user),async(req,res)=>res.status(201).json(await createUser(db,req.input,req.user.id)));
  app.patch('/api/users/:id',admin,validate(schemas.userStatus),(req,res)=>res.json(transaction(db,()=>{
   const u=db.prepare('SELECT * FROM users WHERE id=?').get(req.params.id);if(!u) fail(404,'Usuario no encontrado.');
