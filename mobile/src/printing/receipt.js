@@ -29,6 +29,7 @@ export function ticketLines(record,kind='sale',width=58){
   pair('Ventas',String(s.sale_count));pair('Total vendido',money(s.total_cents));pair('Base inicial',money(s.opening_cents));
   pair('Efectivo esperado',money(s.expected_cash_cents));pair('Efectivo contado',money(s.declared_cash_cents));pair('Diferencia efectivo',money(s.cash_difference_cents));
   pair('Electrónico registrado',money(s.electronic_cents));pair('Electrónico verificado',money(s.declared_electronic_cents));pair('Diferencia electrónico',money(s.electronic_difference_cents));
+  if(s.financial_details){const f=s.financial_details;rule();add('VENTAS Y ABONOS');pair('Ventas a crédito',money(f.credit_cents));pair('Ventas efectivo',money(f.sale_cash_cents));pair('Ventas electrónicas',money(f.sale_electronic_cents));pair('Abonos efectivo',money(f.collection_cash_cents));pair('Abonos electrónicos',money(f.collection_electronic_cents));for(const v of f.by_seller){add(v.seller_name+' · '+v.user_name);pair('Vendido',money(v.total_cents));}}
   pair('Diferencia total',money(s.total_difference_cents));if(s.notes)add(s.notes);
  }
  return lines;

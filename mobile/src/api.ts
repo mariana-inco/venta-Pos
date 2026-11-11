@@ -34,7 +34,7 @@ export async function forgetSession(){currentUser=null;token='';if(offlineEnable
 export async function signOut(){if(offlineEnabled){try{await remote('/auth/logout','POST',{},token,3000);}catch{}await forgetSession();return;}await api('/auth/logout','POST',{});await forgetSession();}
 /** Descarga el PDF guardado de la venta/cierre (nunca se recalcula) y lo abre, comparte o imprime. */
 export async function documentAction(path:string,width:58|80,action:'share'|'print'|'open'){
- if(offlineEnabled&&!await api('/route'))return localDocument(path,width,action);
+ // Account statements and new route documents are rendered by the server.
  const url=`${API_URL}/api${path}/pdf?width=${width}`;const name=`comprobante-${path.split('/').pop()?.slice(0,8)}-${width}mm.pdf`;
  if(Platform.OS==='web'){
   const response=await fetch(url,{headers:{Authorization:`Bearer ${token}`}});if(!response.ok)throw new ApiError('No se pudo descargar el comprobante. Inténtalo nuevamente.',response.status,`HTTP ${response.status} · GET ${path}/pdf`);
@@ -61,4 +61,15 @@ export async function savePending(userId:string,body:Record<string,unknown>|null
  const key=`pos-pending-${userId}`;
  if(Platform.OS==='web'){if(body)localStorage.setItem(key,JSON.stringify(body));else localStorage.removeItem(key);}
  else{if(body)await SecureStore.setItemAsync(key,JSON.stringify(body));else await SecureStore.deleteItemAsync(key);}
+}
+
+/** Authenticated customer statements/reports; no public URLs or session tokens in links. */
+export async function downloadPdf(path:string,name='estado-de-cuenta.pdf'){
+ const url=API_URL+'/api'+path;
+ if(Platform.OS==='web'){
+  const response=await fetch(url,{headers:{Authorization:`Bearer ${token}`}});if(!response.ok){const error=await response.json().catch(()=>({}));throw new ApiError(error.error||'No se pudo descargar el PDF.',response.status,'GET '+path);}
+  const uri=URL.createObjectURL(await response.blob()),a=document.createElement('a');a.href=uri;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(uri),60000);return;
+ }
+ const result=await FileSystem.downloadAsync(url,FileSystem.cacheDirectory+name,{headers:{Authorization:`Bearer ${token}`}});if(result.status!==200)throw new Error('No se pudo descargar el estado de cuenta. Revisa las fechas y la conexión.');
+ await Sharing.shareAsync(result.uri,{mimeType:'application/pdf',dialogTitle:'Estado de cuenta'});
 }

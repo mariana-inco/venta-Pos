@@ -1,3 +1,4 @@
+import {UsersPanel} from './UsersPanel';
 import React, {useEffect, useState} from 'react';
 import {Pressable, Switch, Text, View} from 'react-native';
 import {Feather} from '@expo/vector-icons';
@@ -67,22 +68,7 @@ export function SettingsScreen({user, settings, platforms, run, refresh, busy, l
       </Group>
 
       <Group id="users" open={open} onToggle={setOpen} icon="users" title="Usuarios y accesos" subtitle={`${users.filter(u => u.active).length} usuarios activos`}>
-        {users.map(u => <View key={u.id} style={styles.row}>
-          <View style={{flex: 1}}><Text style={{color: colors.ink, fontWeight: '700', fontSize: 15}}>{u.name}{u.id === user.id ? ' (tú)' : ''}</Text><Text style={styles.small}>@{u.username} · {u.role === 'admin' ? 'Administrador' : 'Vendedor'}</Text></View>
-          <Switch accessibilityLabel={`Acceso de ${u.name}`} value={!!u.active} disabled={busy || u.id === user.id} trackColor={{true: colors.accent, false: colors.lineStrong}} thumbColor={colors.white} onValueChange={active => run(async () => { await api(`/users/${u.id}`, 'PATCH', {active}); await loadUsers(); }, active ? 'Usuario activado' : 'Usuario desactivado')}/>
-        </View>)}
-        <Divider/>
-        <Text style={styles.sectionTitle}>Crear usuario</Text>
-        <Field label="Nombre completo" kind="name" value={userName} onChange={setUserName}/>
-        <Field label="Usuario para ingresar" kind="plain" value={username} onChange={setUsername} error={usernameError} hint="Sin espacios. Ej. mariana"/>
-        <Field label="Contraseña" value={password} onChange={setPassword} secure hint="Mínimo 12 caracteres" error={password && password.length < 12 ? `Faltan ${12 - password.length} caracteres` : null}/>
-        <Segmented items={[{id: 'seller', name: 'Vendedor'}, {id: 'admin', name: 'Administrador'}]} value={role} onChange={setRole}/>
-        <Button title="Crear usuario" icon="user-plus" disabled={busy || !username || !!usernameError || !userName.trim() || password.length < 12} onPress={() => run(async () => { await api('/users', 'POST', {username, name: userName.trim(), password, role}); setUsername(''); setUserName(''); setPassword(''); await loadUsers(); }, 'Usuario creado')}/>
-        <Divider/>
-        <Text style={styles.sectionTitle}>Restablecer contraseña</Text>
-        <Choice items={users.map(u => ({id: u.id, name: u.name}))} value={resetUser} onChange={setResetUser}/>
-        <Field label="Nueva contraseña" value={resetPassword} onChange={setResetPassword} secure hint="Cierra las sesiones abiertas de ese usuario." error={resetPassword && resetPassword.length < 12 ? 'Mínimo 12 caracteres' : null}/>
-        <Button title="Cambiar contraseña" variant="secondary" disabled={busy || !resetUser || resetPassword.length < 12} onPress={() => run(async () => { await api(`/users/${resetUser}/password`, 'POST', {password: resetPassword}); setResetPassword(''); }, 'Contraseña actualizada')}/>
+        <UsersPanel currentUser={user} run={run} busy={busy} refresh={refresh}/>
       </Group>
 
       <Group id="audit" open={open} onToggle={setOpen} icon="activity" title="Actividad reciente" subtitle="Quién hizo qué y cuándo">

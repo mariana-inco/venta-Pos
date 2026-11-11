@@ -1,3 +1,5 @@
+import {RoutesScreen} from './src/RoutesScreen';
+import {ResultsScreen} from './src/ResultsScreen';
 import React,{useCallback,useEffect,useRef,useState} from 'react';
 import {StatusBar} from 'expo-status-bar';
 import {Feather} from '@expo/vector-icons';
@@ -65,7 +67,8 @@ function Main(){
    <Pressable testID="cash-status" accessibilityRole="button" accessibilityLabel={own?'Caja abierta, ver caja':'Caja cerrada, abrir caja'} onPress={()=>go('cash')} style={[local.cashPill,{backgroundColor:own?colors.greenSoft:colors.orangeSoft}]}>
     {width>=400&&<Feather name={own?'unlock':'lock'} size={13} color={own?colors.greenDark:colors.orange}/>}<Text numberOfLines={1} style={[local.cashText,{color:own?colors.greenDark:colors.orange}]}>{own?`Caja${own.number?' #'+own.number:''}`:'Sin caja'}</Text>
    </Pressable>
-   <Pressable accessibilityRole="button" accessibilityLabel="Rutas y abonos" onPress={()=>go('operations')} style={[local.iconTap,tab==='operations'&&{backgroundColor:colors.accentSoft}]}><Feather name="credit-card" size={20} color={tab==='operations'?colors.accent:colors.ink}/></Pressable>
+   <Pressable accessibilityRole="button" accessibilityLabel="Cuentas por cobrar" onPress={()=>go('operations')} style={[local.iconTap,tab==='operations'&&{backgroundColor:colors.accentSoft}]}><Feather name="credit-card" size={20} color={tab==='operations'?colors.accent:colors.ink}/></Pressable>
+   <Pressable accessibilityRole="button" accessibilityLabel="Rutas e inventario" onPress={()=>go('routes')} style={local.iconTap}><Feather name="map" size={20} color={colors.ink}/></Pressable>
    <Pressable testID="profile-button" accessibilityRole="button" accessibilityLabel="Mi perfil y configuración" onPress={()=>go('settings')} style={[local.avatar,tab==='settings'&&{borderColor:colors.accent,borderWidth:2}]}>
     <Text style={local.avatarText}>{initials(user.name)}</Text>
    </Pressable>
@@ -81,6 +84,8 @@ function Main(){
    {tab==='catalog'&&<CatalogScreen key={catalogVersion} initialTab={catalogTab} products={products} customers={customers} user={user} run={run} refresh={refresh} busy={busy}/>}
    {tab==='history'&&<HistoryScreen key={historyVersion} user={user} settings={settings} run={run} busy={busy} initialSale={sale} initialClosure={closure} sessionFilter={sessionFilter} clearInitial={()=>{setSale(null);setClosure(null);}} customers={customers} sessions={sessions}/>}
    {tab==='operations'&&<OperationsScreen user={user} products={products} customers={customers} session={own} run={run} busy={busy} refresh={refresh}/>}
+   {tab==='routes'&&<RoutesScreen user={user} products={products} customers={customers} run={run} busy={busy} refresh={refresh}/>}
+   {tab==='results'&&user.role==='admin'&&<ResultsScreen run={run} busy={busy}/>}
    {tab==='settings'&&<SettingsScreen user={user} settings={settings} platforms={platforms} run={run} refresh={refresh} busy={busy} logout={logout}/>}
    {!!toast&&<Toast text={toast}/>}
   </View>

@@ -14,6 +14,7 @@ test('Rutas, códigos, inventario compartido, crédito, abonos, reversión y anu
  const users=await request('/users');const seller=users.find(u=>u.username==='seller'),other=users.find(u=>u.username==='other');
  const r1=await request('/routes',{name:'Ruta 1'}),r2=await request('/routes',{name:'Ruta 2'});
  await request(`/routes/${r1.id}/sellers/${seller.id}`,{},'admin','PUT');await request(`/routes/${r2.id}/sellers/${other.id}`,{},'admin','PUT');
+ const agent=await request('/agents',{user_id:seller.id,name:'Vendedor asociado'});
  const customer=await request('/customers',{name:'Manuel',city:'Bogotá'},'seller','POST',201);
  assert.equal((await request('/customers',undefined,'other')).length,0);
  const whole=await request('/products',{name:'Pollo',unit:'kg',price:'12000',codes:[{code:'001',kind:'internal'},{code:'ABC-01',kind:'barcode'}]});
@@ -26,7 +27,7 @@ test('Rutas, códigos, inventario compartido, crédito, abonos, reversión y anu
  await request(`/products/${soda.id}/group`,{group_id:group.id},'admin','PUT',400);await request(`/products/${soda.id}/group`,{group_id:units.id},'admin','PUT');
  for(const r of [r1,r2])for(const g of [group,units])await request('/inventory',{route_id:r.id,group_id:g.id,quantity:g.id===group.id?'1000':'100',kind:'assign',note:'Carga inicial',expected_available_milli:0});
  const session=await request('/cash-sessions',{opening:'0'},'seller','POST',201);
- const sell=(items,extra={})=>({session_id:session.id,customer_id:customer.id,items,method:'cash',request_key:randomUUID(),...extra});
+ const sell=(items,extra={})=>({agent_id:agent.id,session_id:session.id,customer_id:customer.id,items,method:'cash',request_key:randomUUID(),...extra});
  const first=await request('/sales',sell([{product_id:whole.id,quantity:'300'},{product_id:breast.id,quantity:'200'}],{credit:true,initial_payment:'150000'}),'seller','POST',201);
  assert.equal(first.balance_cents,665000000);assert.equal(first.state,'PAGO PARCIAL');
  let inv=await request('/inventory',undefined,'seller');assert.equal(inv.stock.find(s=>s.group_id===group.id).available_milli,500000);

@@ -15,7 +15,9 @@ export function HomeScreen({user, sessions, busy, run, refresh, go, onHistory, o
   const sum = (key: 'total_cents' | 'cash_cents' | 'electronic_cents' | 'sale_count') => scope.reduce((n, s) => n + s[key], 0);
   const count = sum('sale_count');
   const shortcuts = [
-    {name: 'Rutas y abonos', icon: 'credit-card' as const, onPress: () => go('operations')},
+    {name:'Rutas e inventario',icon:'map' as const,onPress:()=>go('routes')},
+    ...(admin?[{name:'Resultados y cierres',icon:'bar-chart-2' as const,onPress:()=>go('results')}]:[]),
+    {name: 'Cuentas por cobrar', icon: 'credit-card' as const, onPress: () => go('operations')},
     {name: 'Historial', icon: 'clock' as const, onPress: onHistory},
     {name: 'Productos', icon: 'package' as const, onPress: () => onCatalog('products')},
     {name: 'Clientes', icon: 'users' as const, onPress: () => onCatalog('customers')},

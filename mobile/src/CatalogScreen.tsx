@@ -12,12 +12,14 @@ export function CatalogScreen({products, customers, user, run, refresh, busy, in
   const admin = user.role === 'admin';
   const [tab, setTab] = useState<'products' | 'customers'>(initialTab || (admin ? 'products' : 'customers')), [query, setQuery] = useState(''), [status, setStatus] = useState('active'), [limit, setLimit] = useState(PAGE);
   const [editing, setEditing] = useState<string | null>(null), [name, setName] = useState(''), [price, setPrice] = useState(''), [unit, setUnit] = useState<'unit' | 'kg'>('unit'), [active, setActive] = useState(true), [tracks, setTracks] = useState(false), [stock, setStock] = useState(''), [city, setCity] = useState('');
+  const [wholesale,setWholesale]=useState(''),[customerType,setCustomerType]=useState('normal');
   const [codes,setCodes]=useState<{code:string;kind:'internal'|'barcode'}[]>([]);
   const [deactivate, setDeactivate] = useState<{id: string; name: string} | null>(null);
   const isProducts = tab === 'products';
 
   function open(item: Product | Customer | null) {
     setCodes(item&&'price_cents' in item?item.codes||[]:[]);
+    setWholesale(item&&'price_cents' in item&&item.wholesale_price_cents?moneyInput(item.wholesale_price_cents):'');setCustomerType(item&&'city' in item?item.customer_type||'normal':'normal');
     setEditing(item ? item.id : 'new'); setName(item?.name || '');
     if (item && 'price_cents' in item) { setPrice(moneyInput(item.price_cents)); setUnit(item.unit); setActive(!!item.active); const stock=item.global_stock_milli===undefined?item.stock_milli:item.global_stock_milli;setTracks(stock!==null);setStock(stock===null?'':quantityText(stock)); }
     else { setPrice(''); setUnit('unit'); setActive(true); setTracks(false); setStock(''); setCity(item && 'city' in item ? item.city : ''); }
@@ -28,9 +30,9 @@ export function CatalogScreen({products, customers, user, run, refresh, busy, in
   const errors = isProducts
     ? {price: price && (priceCents === null || priceCents <= 0) ? 'Escribe un precio válido, por ejemplo 12.000' : null, stock: tracks && stock && stockMilli === null ? (unit === 'unit' ? 'Solo unidades enteras' : 'Usa coma para decimales: 12,5') : null}
     : {price: null, stock: null};
-  const canSave = isProducts ? (editing!=='new'||codes.some(c=>c.code.trim())) && !!name.trim() && priceCents !== null && priceCents > 0 && (!tracks || stockMilli !== null) : !!name.trim() && !!city.trim();
+  const canSave = isProducts ? codes.some(c=>c.code.trim()) && !!name.trim() && priceCents !== null && priceCents > 0 && (!wholesale.trim()||!!moneyToCents(wholesale)) : !!name.trim() && !!city.trim();
   async function save() {
-    const body = isProducts ? {codes:codes.filter(c=>c.code.trim()).map(c=>({...c,code:c.code.trim()})),name: name.trim(), price: normalizeMoney(price), unit, active, stock: tracks ? quantityForApi(stockMilli!) : null,expected_stock_milli:(()=>{const p=products.find(p=>p.id===editing);return p?.global_stock_milli===undefined?p?.stock_milli:p.global_stock_milli;})(),expected_updated_at:products.find(p=>p.id===editing)?.updated_at} : {name: name.trim(), city: city.trim()};
+    const body = isProducts ? {code:codes[0]?.code.trim(),name:name.trim(),price:normalizeMoney(price),wholesale_price:wholesale.trim()?normalizeMoney(wholesale):null,unit,active,expected_updated_at:products.find(p=>p.id===editing)?.updated_at} : {name:name.trim(),city:city.trim(),customer_type:customerType};
     await api(`/${tab}${editing && editing !== 'new' ? '/' + editing : ''}`, editing === 'new' ? 'POST' : 'PUT', body);
     setEditing(null); await refresh();
   }
@@ -66,9 +68,9 @@ export function CatalogScreen({products, customers, user, run, refresh, busy, in
             <Text numberOfLines={2} style={{fontSize: 15, fontWeight: '700', color: colors.ink}}>{item.name}</Text>
             {p ? <View style={[styles.row, {justifyContent: 'flex-start', gap: 8, flexWrap: 'wrap'}]}>
               <Text style={[styles.money, {fontSize: 14, color: colors.ink}]}>{cop(p.price_cents)}<Text style={styles.small}>/{p.unit === 'kg' ? 'kg' : 'und'}</Text></Text>
-              <Text style={[styles.small, p.stock_milli === 0 && {color: colors.red, fontWeight: '700'}]}>{p.stock_milli === null ? 'Sin control de stock' : p.stock_milli === 0 ? 'Agotado' : `Stock: ${quantityLabel(p.stock_milli, p.unit)}`}</Text>
+              <Text style={[styles.small, p.stock_milli === 0 && {color: colors.red, fontWeight: '700'}]}>{p.stock_milli === null ? 'Inventario por ruta' : p.stock_milli === 0 ? 'Agotado' : `Stock: ${quantityLabel(p.stock_milli, p.unit)}`}</Text>
               {!p.active && <Badge text="Inactivo" tone="gray"/>}
-            </View> : <Text style={styles.small}><Feather name="map-pin" size={12}/> {(item as Customer).city}</Text>}
+            </View> : <Text style={styles.small}><Feather name="map-pin" size={12}/> {(item as Customer).city} · {(item as Customer).customer_type==='wholesale'?'Mayorista':'Normal'}</Text>}
           </View>
           {editable && <Feather name="chevron-right" size={20} color={colors.muted}/>}
         </Pressable>;
@@ -84,24 +86,19 @@ export function CatalogScreen({products, customers, user, run, refresh, busy, in
       </>}>
       <Field label="Nombre" kind={isProducts ? 'text' : 'name'} value={name} onChange={setName} placeholder={isProducts ? 'Ej. Pechuga de pollo' : 'Ej. Manuel Rodríguez'} autoFocus={editing === 'new'} testID="catalog-name"/>
       {isProducts ? <>
-        <Text style={styles.label}>Códigos de identificación</Text>
-        {codes.map((c,i)=><View key={i} style={{gap:6}}><Field label={`Código ${i+1}`} value={c.code} onChange={v=>setCodes(codes.map((x,j)=>j===i?{...x,code:v}:x))} placeholder="Código interno o de barras"/><Choice items={[{id:'internal',name:'Interno'},{id:'barcode',name:'Código de barras'}]} value={c.kind} onChange={v=>setCodes(codes.map((x,j)=>j===i?{...x,kind:v as 'internal'|'barcode'}:x))}/><Button title="Quitar código" variant="ghost" onPress={()=>setCodes(codes.filter((_,j)=>j!==i))}/></View>)}
-        <Button title="Agregar código" variant="outline" onPress={()=>setCodes([...codes,{code:'',kind:'internal'}])}/>
+        <Field label="Código" value={codes[0]?.code||''} onChange={v=>setCodes([{code:v,kind:'internal'}])} placeholder="Código interno o de barras"/>
         <View style={{gap: 6}}><Text style={styles.label}>¿Cómo se vende?</Text>
           <Segmented items={[{id: 'unit', name: 'Por unidad'}, {id: 'kg', name: 'Por kilogramo'}]} value={unit} onChange={v => setUnit(v as 'unit' | 'kg')}/>
           {editing !== 'new' && <Text style={styles.hint}>Si el producto ya tiene ventas, conserva su unidad. Para cambiarla, crea otro producto.</Text>}
         </View>
-        <Field label={unit === 'kg' ? 'Precio por kilogramo' : 'Precio por unidad'} kind="decimal" prefix="$" value={price} onChange={setPrice} placeholder="0" error={errors.price} hint={priceCents ? `${cop(priceCents)} por ${unit === 'kg' ? 'kg' : 'unidad'}` : undefined} testID="catalog-price"/>
-        <View style={[styles.row, {paddingVertical: 4}]}>
-          <View style={{flex: 1}}><Text style={styles.label}>Controlar existencias</Text><Text style={styles.hint}>Descuenta automáticamente con cada venta.</Text></View>
-          <Switch accessibilityLabel="Controlar existencias" value={tracks} onValueChange={setTracks} trackColor={{true: colors.accent, false: colors.lineStrong}} thumbColor={colors.white}/>
-        </View>
-        {tracks && <Field label={`Existencias en ${unit === 'kg' ? 'kilogramos' : 'unidades'}`} kind={unit === 'kg' ? 'decimal' : 'number'} value={stock} onChange={setStock} placeholder="0" error={errors.stock} testID="catalog-stock"/>}
+        <Field label={unit === 'kg' ? 'Precio normal por kilogramo' : 'Precio normal por unidad'} kind="decimal" prefix="$" value={price} onChange={setPrice} placeholder="0" error={errors.price} hint={priceCents ? `${cop(priceCents)} por ${unit === 'kg' ? 'kg' : 'unidad'}` : undefined} testID="catalog-price"/>
+        <Field label="Precio mayorista por KG o unidad" kind="decimal" prefix="$" value={wholesale} onChange={setWholesale} hint="Independiente del precio normal. Obligatorio para vender a mayoristas."/>
+        <Text style={styles.hint}>Las existencias se entregan y ajustan en Rutas.</Text>
         <View style={[styles.row, {paddingVertical: 4}]}>
           <View style={{flex: 1}}><Text style={styles.label}>Disponible para la venta</Text><Text style={styles.hint}>Los inactivos no aparecen en Vender; su historial se conserva.</Text></View>
           <Switch accessibilityLabel="Disponible para la venta" value={active} onValueChange={setActive} trackColor={{true: colors.accent, false: colors.lineStrong}} thumbColor={colors.white}/>
         </View>
-      </> : <Field label="Ciudad o municipio" kind="name" value={city} onChange={setCity} placeholder="Ej. El Rosal" testID="catalog-city"/>}
+      </> : <><Text style={styles.label}>Tipo de cliente (obligatorio)</Text><Choice items={[{id:'normal',name:'Normal'},{id:'wholesale',name:'Mayorista'}]} value={customerType} onChange={setCustomerType}/><Field label="Ciudad o municipio" kind="name" value={city} onChange={setCity} placeholder="Ej. El Rosal" testID="catalog-city"/></>}
     </Sheet>
     <Confirm visible={!!deactivate} title={`¿Desactivar “${deactivate?.name}”?`} message={isProducts ? 'Dejará de aparecer en Vender. Las ventas anteriores no cambian y puedes reactivarlo después.' : 'Dejará de aparecer en la lista de clientes. Las ventas anteriores conservan su nombre.'}
       confirmText="Desactivar" danger busy={busy} onCancel={() => setDeactivate(null)}

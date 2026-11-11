@@ -1,3 +1,4 @@
+import {FinancialSummary,InventorySummary} from './ResultsScreen';
 import React, {useEffect, useMemo, useState} from 'react';
 import {Pressable, ScrollView, Text, View} from 'react-native';
 import {Feather} from '@expo/vector-icons';
@@ -108,8 +109,8 @@ export function HistoryScreen({user, settings, run, busy, initialSale, initialCl
       <InfoRow label="Cierre" value={`${shortDate(c.closed_at)} · ${time(c.closed_at)}`}/>
       <Divider/>
       <InfoRow label={`Total vendido · ${c.sale_count} ventas`} value={cop(c.total_cents)} strong/>
-      <InfoRow label="Ventas en efectivo" value={cop(c.cash_cents)}/>
-      <InfoRow label="Ventas electrónicas" value={cop(c.electronic_cents)}/>
+      <InfoRow label="Efectivo recibido (ventas + abonos)" value={cop(c.cash_cents)}/>
+      <InfoRow label="Electrónico recibido (ventas + abonos)" value={cop(c.electronic_cents)}/>
       {c.platforms.map((p, i) => <InfoRow key={i} label={`· ${p.platform_name}`} value={cop(p.amount)}/>)}
       <InfoRow label="Base inicial" value={cop(c.opening_cents)}/>
     </Card>
@@ -128,6 +129,8 @@ export function HistoryScreen({user, settings, run, busy, initialSale, initialCl
       <InfoRow label="Diferencia total" value={signed(c.total_difference_cents)} strong/>
       {!!c.notes && <Text style={styles.body}>Observaciones: {c.notes}</Text>}
     </Card>
+    {c.financial_details&&<Card><Text style={styles.h2}>Ventas por vendedor y cobros</Text>{c.financial_details.by_seller.map((s:any)=><View key={s.user_id+'/'+s.agent_id}><Text style={styles.h2}>{s.seller_name} · {s.user_name}</Text><FinancialSummary value={s}/></View>)}<FinancialSummary value={c.financial_details}/></Card>}
+    {c.inventory&&<Card><Text style={styles.h2}>Inventario histórico de la ruta</Text><InventorySummary value={c.inventory}/></Card>}
     <Button title="Ver ventas incluidas" icon="list" variant="secondary" onPress={() => { setActiveSession(closure.session_id); setPeriod('all'); setClosure(null); setTab('sales'); }}/>
     <Card>
       <Text style={styles.sectionTitle}>Documento del cierre</Text>

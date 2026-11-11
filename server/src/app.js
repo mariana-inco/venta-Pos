@@ -1,3 +1,4 @@
+import {mountBusiness,customerView,typeFor} from './business.js';
 import {mountCommerce,productsFor,saveCodes,codesFor,routeFor,balance} from './commerce.js';
 import express from 'express';
 import {mountSync, mountDeviceAdmin} from './sync.js';
@@ -29,7 +30,7 @@ export function createApp(db) {
  mountDeviceAdmin(app,db);
  app.get('/api/me',(req,res)=>res.json(req.user));
  app.post('/api/auth/logout',(req,res)=>{db.prepare('DELETE FROM auth_sessions WHERE token_hash=?').run(req.tokenHash);audit(db,req.user.id,'auth.logout',req.user.id);res.json({ok:true});});
- app.get('/api/users',admin,(_,res)=>res.json(db.prepare('SELECT id,name,username,role,active FROM users ORDER BY name').all()));
+ app.get('/api/users',admin,(_,res)=>res.json(db.prepare('SELECT u.id,u.name,u.username,u.role,u.active,r.route_id FROM users u LEFT JOIN seller_routes r ON r.user_id=u.id ORDER BY u.name').all()));
  app.post('/api/users',admin,validate(schemas.user),async(req,res)=>res.status(201).json(await createUser(db,req.input,req.user.id)));
  app.patch('/api/users/:id',admin,validate(schemas.userStatus),(req,res)=>res.json(transaction(db,()=>{
   const u=db.prepare('SELECT * FROM users WHERE id=?').get(req.params.id);if(!u) fail(404,'Usuario no encontrado.');
@@ -50,6 +51,7 @@ export function createApp(db) {
   const fields=BUSINESS_FIELDS.filter(f=>req.input[f]!==undefined);
   const result=transaction(db,()=>{db.prepare(`UPDATE settings SET business_name=?,paper_width=?${fields.map(f=>`,${f}=?`).join('')} WHERE id=1`).run(req.input.business_name,req.input.paper_width,...fields.map(f=>req.input[f]));audit(db,req.user.id,'settings.update','1',req.input);return db.prepare(settingsQuery).get();});res.json(result);
  });
+ mountBusiness(app,db);
  mountCommerce(app,db);
  app.get('/api/products',(req,res)=>res.json(productsFor(db,req.user)));
  const saveProduct=(req,res)=>res.json(transaction(db,()=>{
@@ -59,11 +61,12 @@ export function createApp(db) {
   if(previous && previous.unit!==p.unit && db.prepare('SELECT 1 FROM product_groups WHERE product_id=?').get(productId))fail(409,'Conserva la unidad del grupo de inventario.');
   if(previous && previous.unit!==p.unit && (db.prepare('SELECT id FROM sale_items WHERE product_id=?').get(productId)||db.prepare("SELECT 1 FROM catalog_versions v, json_each(v.payload,'$.products') p WHERE json_extract(p.value,'$.id')=? LIMIT 1").get(productId))) fail(409,'Un producto vendido o descargado por un dispositivo conserva su unidad de medida. Crea otro producto.');
   const price=money(p.price);if(price<=0) fail(400,'El precio debe ser mayor a cero.');
-  const stock=p.stock===null?null:(scaled(p.stock,3,'Existencias')===0?0:quantity(p.stock,p.unit)); const updated=now();
+  const stock=previous?.stock_milli??null; const updated=now();
   db.prepare('INSERT INTO products VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,price_cents=excluded.price_cents,unit=excluded.unit,active=excluded.active,stock_milli=excluded.stock_milli,updated_at=excluded.updated_at').run(productId,p.name,price,p.unit,Number(p.active),stock,previous?.created_at||updated,updated);
   const previousCodes=codesFor(db,productId);
-  saveCodes(db,productId,p.codes);
-  if(previous)db.prepare('DELETE FROM stock_debts WHERE product_id=?').run(productId);
+  saveCodes(db,productId,p.code!==undefined?[{code:p.code,kind:'internal'},...previousCodes.filter(c=>c.code!==previousCodes[0]?.code&&c.code!==p.code)]:p.codes);
+  if(p.wholesale_price!==undefined){const wp=p.wholesale_price===null?null:money(p.wholesale_price);if(wp!==null&&wp<=0)fail(400,'El precio mayorista debe ser mayor a cero.');db.prepare('INSERT INTO product_pricing VALUES (?,?) ON CONFLICT(product_id) DO UPDATE SET wholesale_price_cents=excluded.wholesale_price_cents').run(productId,wp);}
+
   audit(db,req.user.id,previous?'product.update':'product.create',productId,{before:previous,before_codes:previousCodes,after:{...p,price_cents:price,stock_milli:stock}});
   return productsFor(db,req.user).find(p=>p.id===productId);
  }));
@@ -71,14 +74,14 @@ export function createApp(db) {
  app.delete('/api/products/:id',admin,(req,res)=>{
   transaction(db,()=>{if(!db.prepare('SELECT id FROM products WHERE id=?').get(req.params.id))fail(404,'Producto no encontrado.');db.prepare('UPDATE products SET active=0,updated_at=? WHERE id=?').run(now(),req.params.id);audit(db,req.user.id,'product.deactivate',req.params.id);});res.json({ok:true,message:'Producto desactivado; historial conservado.'});
  });
- app.get('/api/customers',(req,res)=>{const route=routeFor(db,req.user);const search=String(req.query.search||'').slice(0,120);res.json(db.prepare(`SELECT * FROM customers WHERE active=1 AND (instr(lower(name),lower(?))>0 OR EXISTS(SELECT 1 FROM customer_routes cr WHERE cr.customer_id=customers.id AND instr(lower(cr.identification),lower(?))>0)) ORDER BY name`).all(search,search).map(c=>({...c,identification:db.prepare('SELECT identification FROM customer_routes WHERE customer_id=? LIMIT 1').get(c.id)?.identification||''})).filter(c=>req.user.role==='admin'||!route||db.prepare('SELECT 1 FROM customer_routes WHERE customer_id=? AND route_id=?').get(c.id,route.id)));});
+ app.get('/api/customers',(req,res)=>{const route=routeFor(db,req.user);const search=String(req.query.search||'').slice(0,120);res.json(db.prepare(`SELECT * FROM customers WHERE active=1 AND (instr(lower(name),lower(?))>0 OR EXISTS(SELECT 1 FROM customer_routes cr WHERE cr.customer_id=customers.id AND instr(lower(cr.identification),lower(?))>0)) ORDER BY name`).all(search,search).map(c=>({...customerView(db,c),identification:db.prepare('SELECT identification FROM customer_routes WHERE customer_id=? LIMIT 1').get(c.id)?.identification||''})).filter(c=>req.user.role==='admin'||(route&&db.prepare('SELECT 1 FROM customer_routes WHERE customer_id=? AND route_id=?').get(c.id,route.id))));});
  app.post('/api/customers',validate(schemas.customer),(req,res)=>res.status(201).json(transaction(db,()=>{
-  const p=req.input;const existing=db.prepare('SELECT * FROM customers WHERE name=? COLLATE NOCASE AND city=? COLLATE NOCASE AND active=1').get(p.name,p.city);if(existing)return existing;
-  const customerId=id();const created=now();db.prepare('INSERT INTO customers VALUES (?,?,?,?,?,?)').run(customerId,p.name,p.city,1,created,created);const route=routeFor(db,req.user);if(route)db.prepare('INSERT INTO customer_routes VALUES (?,?,?)').run(customerId,route.id,'');audit(db,req.user.id,'customer.create',customerId,p);return db.prepare('SELECT * FROM customers WHERE id=?').get(customerId);
+  const p=req.input;const existing=db.prepare('SELECT * FROM customers WHERE name=? COLLATE NOCASE AND city=? COLLATE NOCASE AND active=1').get(p.name,p.city);if(existing){if(typeFor(db,existing.id)!==p.customer_type)fail(409,'Ese cliente ya existe con otro tipo; edítalo desde administración.');const route=routeFor(db,req.user);if(req.user.role!=='admin'&&(!route||!db.prepare('SELECT 1 FROM customer_routes WHERE customer_id=? AND route_id=?').get(existing.id,route.id)))fail(403,'Ese cliente pertenece a otra ruta.');return customerView(db,existing);}
+  if(req.user.role!=='admin'&&!routeFor(db,req.user))fail(409,'El administrador debe asignarte una ruta.');const customerId=id();const created=now();db.prepare('INSERT INTO customers VALUES (?,?,?,?,?,?)').run(customerId,p.name,p.city,1,created,created);db.prepare('INSERT INTO customer_profiles VALUES (?,?)').run(customerId,p.customer_type);const route=routeFor(db,req.user);if(route)db.prepare('INSERT INTO customer_routes VALUES (?,?,?)').run(customerId,route.id,'');audit(db,req.user.id,'customer.create',customerId,p);return customerView(db,db.prepare('SELECT * FROM customers WHERE id=?').get(customerId));
  })));
  app.put('/api/customers/:id',admin,validate(schemas.customer),(req,res)=>res.json(transaction(db,()=>{
   if(!db.prepare('SELECT id FROM customers WHERE id=? AND active=1').get(req.params.id)) fail(404,'Cliente no encontrado.');
-  db.prepare('UPDATE customers SET name=?,city=?,updated_at=? WHERE id=?').run(req.input.name,req.input.city,now(),req.params.id);audit(db,req.user.id,'customer.update',req.params.id,req.input);return db.prepare('SELECT * FROM customers WHERE id=?').get(req.params.id);
+  db.prepare('UPDATE customers SET name=?,city=?,updated_at=? WHERE id=?').run(req.input.name,req.input.city,now(),req.params.id);db.prepare('INSERT INTO customer_profiles VALUES (?,?) ON CONFLICT(customer_id) DO UPDATE SET customer_type=excluded.customer_type').run(req.params.id,req.input.customer_type);audit(db,req.user.id,'customer.update',req.params.id,req.input);return customerView(db,db.prepare('SELECT * FROM customers WHERE id=?').get(req.params.id));
  })));
  app.delete('/api/customers/:id',admin,(req,res)=>{
   transaction(db,()=>{if(!db.prepare('SELECT id FROM customers WHERE id=?').get(req.params.id))fail(404,'Cliente no encontrado.');db.prepare('UPDATE customers SET active=0,updated_at=? WHERE id=?').run(now(),req.params.id);audit(db,req.user.id,'customer.deactivate',req.params.id);});res.json({ok:true});

@@ -6,16 +6,26 @@ import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {openDatabase} from '../src/db.js';
-import {createUser,login} from '../src/auth.js';
+import {reserveReceipts} from '../src/receipt-numbers.js';
+import {transaction} from '../src/db.js';
+import {createUser,login,digest} from '../src/auth.js';
 import {createApp} from '../src/app.js';
-import {registerDevice,catalogFor,ingestEvent} from '../src/sync.js';
+import {registerDevice,catalogFor,ingestEvent,canonical} from '../src/sync.js';
 import {recordSale,closeSession} from '../src/service.js';
 import {LocalStore} from '../../mobile/src/offline/store.js';
 import {ticketLines,ticketHtml} from '../../mobile/src/printing/receipt.js';
 
+// Explicit fixture for catalogues issued before the route-only policy. The live endpoint cannot issue them.
+function legacyCatalog(db,user,deviceId){
+ const current=catalogFor(db,{...user,role:'admin'},deviceId),payload={settings:current.settings,route:null,products:current.products,platforms:current.platforms};
+ const encoded=canonical(payload),version=digest(encoded);
+ db.prepare('INSERT OR IGNORE INTO catalog_versions VALUES (?,?,?)').run(version,encoded,new Date(Date.now()-7200000).toISOString());
+ db.prepare('INSERT OR IGNORE INTO device_catalogs VALUES (?,?)').run(deviceId,version);
+ return {...current,...payload,user,version,receipt_ranges:transaction(db,()=>reserveReceipts(db,deviceId))};
+}
 const local=(path=':memory:')=>{
  const db=new DatabaseSync(path);
- return {db,store:new LocalStore({exec:s=>db.exec(s),run:(s,...a)=>db.prepare(s).run(...a),get:(s,...a)=>db.prepare(s).get(...a),all:(s,...a)=>db.prepare(s).all(...a)},randomUUID)};
+ return {db,store:new LocalStore({exec:s=>db.exec(s),run:(s,...a)=>db.prepare(s).run(...a),get:(s,...a)=>db.prepare(s).get(...a),all:(s,...a)=>db.prepare(s).all(...a)},randomUUID,()=>new Date(Date.now()-3600000).toISOString())};
 };
 async function fixture(){
  const db=openDatabase(':memory:');
@@ -23,7 +33,7 @@ async function fixture(){
  const admin=await createUser(db,{name:'Administrador',username:'admin-offline',password:'admin-offline-password',role:'admin'});
  const product={id:randomUUID(),name:'Queso',price_cents:2400000,unit:'kg',stock_milli:1000};
  db.prepare('INSERT INTO products VALUES (?,?,?,?,?,?,?,?)').run(product.id,product.name,product.price_cents,product.unit,1,product.stock_milli,new Date().toISOString(),new Date().toISOString());
- const prepare=store=>{const grant=registerDevice(db,seller,{device_id:store.deviceId,name:'Prueba'});store.profile(seller);store.applyCatalog(catalogFor(db,seller,store.deviceId));return grant;};
+ const prepare=store=>{const grant=registerDevice(db,seller,{device_id:store.deviceId,name:'Prueba'});store.profile(seller);store.applyCatalog(legacyCatalog(db,seller,store.deviceId));return grant;};
  return {db,seller,admin,product,prepare};
 }
 function sell(store,user,product,qty='1'){
@@ -64,7 +74,7 @@ test('Offline real: persistencia SQLite, dos dispositivos, reintentos concurrent
   assert.equal(f.db.prepare('SELECT COUNT(*) n FROM sync_issues').get().n,3); // 2 old-price notices + 1 shortage
   for(const ack of a.accepted)one.store.acknowledge(ack.event_id,ack);
   assert.equal(one.store.products(f.seller)[0].stock_milli,0); // don't undo local stock before pulling an acknowledged baseline
-  one.store.applyCatalog(catalogFor(f.db,f.seller,one.store.deviceId));
+  one.store.applyCatalog(legacyCatalog(f.db,f.seller,one.store.deviceId));
   assert.equal(one.store.pending().length,0);assert.equal(one.store.products({...f.seller,role:'admin'})[0].stock_milli,-1000);
   assert.equal(ticketHtml(one.store.get('sale',first.sale.id),'sale',58),receipt);
   const altered={...one.store.db.get('SELECT payload FROM local_events WHERE id=?',first.sale.id)};
@@ -85,7 +95,7 @@ test('Caja offline: cierre local ordenado, vendedor sin permiso y rechazo de cie
   const events=l.store.pending();
   for(const row of events.slice(0,2))ingestEvent(f.db,f.seller,l.store.deviceId,row.event);
   assert.throws(()=>closeSession(f.db,f.admin,session.id,close),/dispositivo de origen/);
-  assert.throws(()=>recordSale(f.db,f.seller,{session_id:session.id,request_key:randomUUID()}),/dispositivo de origen/);
+  assert.throws(()=>recordSale(f.db,f.seller,{session_id:session.id,request_key:randomUUID()}),/asignar una ruta/);
   assert.throws(()=>ingestEvent(f.db,f.admin,l.store.deviceId,events[3].event),/operación anterior/);
   ingestEvent(f.db,f.seller,l.store.deviceId,events[2].event);
   const accepted=ingestEvent(f.db,f.admin,l.store.deviceId,events[3].event);
@@ -106,7 +116,7 @@ test('Cola y venta se guardan atómicamente; catálogo viejo no restaura existen
   assert.equal(l.store.pending().length,2);assert.equal(l.store.meta('sequence'),2);assert.equal(l.store.products(f.seller)[0].stock_milli,1000);
   l.db.exec('DROP TRIGGER simulated_disk_failure');
   l.store.request(f.seller,'/sales','POST',input);assert.equal(l.store.products(f.seller)[0].stock_milli,750);
-  l.store.applyCatalog(catalogFor(f.db,f.seller,l.store.deviceId));assert.equal(l.store.products(f.seller)[0].stock_milli,750);
+  l.store.applyCatalog(legacyCatalog(f.db,f.seller,l.store.deviceId));assert.equal(l.store.products(f.seller)[0].stock_milli,750);
   assert.throws(()=>l.store.request(f.seller,'/sales','POST',{...input,items:[{product_id:f.product.id,quantity:'0.5'}]}),/otra venta/);
   assert.equal(l.store.pending().length,3);
  }finally{l.db.close();f.db.close();}

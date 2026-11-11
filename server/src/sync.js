@@ -1,4 +1,5 @@
-import {reserveReceipts,claimReceipt} from './receipt-numbers.js';
+import {customerView} from './business.js';
+import {claimReceipt} from './receipt-numbers.js';
 import {routeFor,productsFor} from './commerce.js';
 import {randomBytes} from 'node:crypto';
 import {z} from 'zod';
@@ -39,12 +40,12 @@ export function authenticateDevice(db){return (req,res,next)=>{
 };}
 export function catalogFor(db,user,deviceId){
  return transaction(db,()=>{
-  const payload={settings:db.prepare('SELECT * FROM settings WHERE id=1').get(),route:routeFor(db,user),products:productsFor(db,user,true),platforms:db.prepare('SELECT * FROM platforms ORDER BY id').all()};
+  const payload={sales_policy:'route-v2',settings:db.prepare('SELECT * FROM settings WHERE id=1').get(),route:routeFor(db,user),products:productsFor(db,user,true),platforms:db.prepare('SELECT * FROM platforms ORDER BY id').all()};
   const serialized=canonical(payload),version=digest(serialized);
   db.prepare('INSERT OR IGNORE INTO catalog_versions VALUES (?,?,?)').run(version,serialized,now());
   db.prepare('INSERT OR IGNORE INTO device_catalogs VALUES (?,?)').run(deviceId,version);
   db.prepare('UPDATE sync_devices SET last_seen_at=? WHERE id=?').run(now(),deviceId);
-  return {...payload,receipt_ranges:reserveReceipts(db,deviceId),version,user,customers:db.prepare('SELECT * FROM customers ORDER BY name').all().filter(c=>user.role==='admin'||!routeFor(db,user)||db.prepare('SELECT 1 FROM customer_routes WHERE customer_id=? AND route_id=?').get(c.id,routeFor(db,user).id)),ack_sequence:db.prepare('SELECT last_sequence FROM sync_devices WHERE id=?').get(deviceId).last_sequence,server_time:now()};
+  return {...payload,receipt_ranges:[],version,user,customers:db.prepare('SELECT * FROM customers ORDER BY name').all().map(c=>customerView(db,c)).filter(c=>user.role==='admin'||(routeFor(db,user)&&db.prepare('SELECT 1 FROM customer_routes WHERE customer_id=? AND route_id=?').get(c.id,routeFor(db,user).id))),ack_sequence:db.prepare('SELECT last_sequence FROM sync_devices WHERE id=?').get(deviceId).last_sequence,server_time:now()};
  });
 }
 export function ingestEvent(db,user,deviceId,raw){
@@ -98,6 +99,8 @@ function applyEvent(db,user,deviceId,event){
  const delivered=db.prepare('SELECT v.payload FROM device_catalogs d JOIN catalog_versions v ON v.id=d.version WHERE d.device_id=? AND d.version=?').get(deviceId,d.catalog_version);
  if(!delivered)fail(409,'No existe el catálogo de origen de esta venta en el dispositivo registrado.');
  const catalog=JSON.parse(delivered.payload);
+ if(catalog.sales_policy==='route-v2')fail(409,'Las ventas nuevas requieren validación online de vendedor, precio e inventario de ruta.');
+ if(event.created_at>db.prepare('SELECT enabled_at FROM business_policy WHERE id=1').get().enabled_at)fail(409,'Este ticket se creó después del cambio a inventarios por ruta. Requiere conciliación administrativa; la cola se conserva.');
  if(!db.prepare('SELECT id FROM customers WHERE id=?').get(d.customer_id))fail(409,'Sincroniza primero el cliente de esta venta.');
  const platform=d.method==='electronic'?catalog.platforms.find(p=>p.id===d.platform_id&&p.active):null;
  if(d.method==='electronic'&&!platform||d.method==='cash'&&d.platform_id!==null)fail(400,'Medio de pago inválido para el catálogo utilizado.');

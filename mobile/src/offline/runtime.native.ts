@@ -52,7 +52,10 @@ export async function localRequest(user:User,path:string,method:string,body?:unk
  const s=await store();
  const route=s.meta('route-'+user.id);
  if(path==='/route'&&method==='GET'){try{const token=await SecureStore.getItemAsync('pos-token')||'';const currentRoute=await remote<any>('/route','GET',undefined,token,5000);s.setMeta('route-'+user.id,currentRoute);return {handled:true,value:currentRoute};}catch(e){if(!(e instanceof ApiError)||e.status!==0)throw e;return {handled:true,value:route||null};}}
- if(route)return {handled:false};
+ const legacyClose=path.match(/^\/cash-sessions\/([^/]+)\/close$/);
+ if(method==='POST'&&legacyClose&&s.get('session',legacyClose[1])){const value=s.request(user,path,method,body);void emit();void syncNow();return {handled:true,value};}
+ // New route commerce is always validated atomically on the server. Old queued events remain synchronizable.
+ if(route||/^\/(products|customers|sales|cash-sessions|settings|platforms)/.test(path))return {handled:false};
  const sessionMatch=path.match(/^\/cash-sessions\/([^/?]+)/);if(sessionMatch&&!s.get('session',sessionMatch[1]))return {handled:false};
  if(path==='/sales'&&method==='POST'&&body&&typeof body==='object'&&'session_id' in body&&!s.get('session',String(body.session_id)))return {handled:false};
  let value;

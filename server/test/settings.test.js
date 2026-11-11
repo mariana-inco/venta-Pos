@@ -1,3 +1,4 @@
+import {routeUser,stockProduct} from './business-fixtures.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
@@ -26,6 +27,7 @@ test('Datos del negocio congelados en la venta y número corto de caja',async()=
  const db=openDatabase(':memory:');
  const admin=await createUser(db,{name:'Admin',username:'admin-s',password:'admin-password-123',role:'admin'});
  const seller=await createUser(db,{name:'Mariana',username:'seller-s',password:'seller-password-123',role:'seller'});
+ const routeSetup=routeUser(db,seller.id);
  const tokens={admin:(await login(db,admin.username,'admin-password-123')).token,seller:(await login(db,seller.username,'seller-password-123')).token};
  const server=createApp(db).listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));const base=`http://127.0.0.1:${server.address().port}/api`;
  async function req(method,path,body,role='admin',status=200){const r=await fetch(base+path,{method,headers:{Authorization:`Bearer ${tokens[role]}`,'Content-Type':'application/json'},body:body&&JSON.stringify(body)});const json=await r.json();assert.equal(r.status,status,JSON.stringify(json));return json;}
@@ -37,9 +39,9 @@ test('Datos del negocio congelados en la venta y número corto de caja',async()=
   assert.equal((await req('PUT','/settings',{business_name:DEFAULT_BUSINESS_NAME,paper_width:58})).business_city,'El Rosal');
   await req('PUT','/settings',{business_name:'X',paper_width:80,business_nit:'1'.repeat(41)},'admin',400);
   await req('PUT','/settings',{business_name:'X',paper_width:80,business_nit:'1'},'seller',403);
-  const product=await req('POST','/products',{name:'Pollo',price:'12000',unit:'kg'});const customer=await req('POST','/customers',{name:'Manuel',city:'El Rosal'},'seller',201);
+  const product=await req('POST','/products',{name:'Pollo',price:'12000',unit:'kg'});stockProduct(db,routeSetup.routeId,product.id);const customer=await req('POST','/customers',{name:'Manuel',city:'El Rosal'},'seller',201);
   const session=await req('POST','/cash-sessions',{opening:'0'},'seller',201);assert.equal(session.number,1);
-  const sale=await req('POST','/sales',{session_id:session.id,customer_id:customer.id,items:[{product_id:product.id,quantity:'125.5'}],method:'cash',request_key:randomUUID()},'seller',201);
+  const sale=await req('POST','/sales',{agent_id:routeSetup.agentId,session_id:session.id,customer_id:customer.id,items:[{product_id:product.id,quantity:'125.5'}],method:'cash',request_key:randomUUID()},'seller',201);
   assert.equal(sale.total_cents,150600000);assert.equal(sale.session_number,1);assert.equal(sale.snapshot.business_nit,'900.123.456-7');assert.equal(sale.snapshot.business_address,'Calle 10 # 5-20');
   // Cambiar los datos después no altera la venta registrada.
   await req('PUT','/settings',{business_name:'Otro',paper_width:80,business_nit:''});
