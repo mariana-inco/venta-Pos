@@ -1,14 +1,15 @@
 import React, {useEffect, useMemo, useState} from 'react';
-import {Pressable, Text, View} from 'react-native';
+import {Pressable, ScrollView, Text, View} from 'react-native';
 import {Feather} from '@expo/vector-icons';
 import {api, documentAction} from './api';
 import {Receipt} from './Receipt';
-import {Badge, Banner, Button, Card, Choice, Divider, Empty, Field, FooterBar, Header, IconButton, InfoRow, Loading, Page, SearchBar, Section, Segmented, Sheet, bogotaDay, colors, cop, date, dayLabel, diff, isIsoDate, normalizeSearch, quantityLabel, receiptNumber, saleNumber, shortDate, signed, styles, time, useBack} from './ui';
+import {Badge, Banner, Button, Card, Chip, Choice, Divider, Empty, Field, FooterBar, Header, IconButton, InfoRow, Loading, Page, SearchBar, Section, Segmented, Sheet, bogotaDay, colors, cop, date, dayLabel, diff, isIsoDate, normalizeSearch, quantityLabel, receiptNumber, saleNumber, shortDate, signed, styles, time, useBack} from './ui';
 import type {Sale, Closure, SalesPage, Settings, User, Customer, CashSession} from './types';
 import type {Run} from '../App';
 type Props = {user: User; settings: Settings; run: Run; busy: boolean; initialSale: Sale | null; initialClosure: Closure | null; sessionFilter: string; clearInitial: () => void; customers: Customer[]; sessions: CashSession[]};
 type Period = 'today' | 'yesterday' | 'week' | 'all' | 'range';
-const PERIODS: {id: Period; name: string}[] = [{id: 'today', name: 'Hoy'}, {id: 'yesterday', name: 'Ayer'}, {id: 'week', name: '7 días'}, {id: 'all', name: 'Todo'}, {id: 'range', name: 'Rango'}];
+const PERIODS: {id: Period; name: string}[] = [{id: 'today', name: 'Hoy'}, {id: 'yesterday', name: 'Ayer'}, {id: 'week', name: '7 días'}, {id: 'all', name: 'Todo'}];
+const METHODS = [{id: '', name: 'Todo pago'}, {id: 'cash', name: 'Efectivo'}, {id: 'electronic', name: 'Electrónico'}, {id: 'credit', name: 'Crédito'}];
 const methodName = (s: {method?: string; platform_name?: string | null}) => s.method === 'credit' ? 'Crédito' : s.method === 'cash' ? 'Efectivo' : s.platform_name || 'Electrónico';
 
 export function HistoryScreen({user, settings, run, busy, initialSale, initialClosure, sessionFilter, clearInitial, customers, sessions}: Props) {
@@ -49,7 +50,7 @@ export function HistoryScreen({user, settings, run, busy, initialSale, initialCl
   const customerName = (id: string) => customers.find(c => c.id === id)?.name;
   const sessionNumber = sessions.find(s => s.id === activeSession)?.number;
   const pdf = (path: string, action: 'print' | 'share' | 'open') => run(() => documentAction(path, width, action));
-  const BackLink = ({text}: {text: string}) => <Pressable accessibilityRole="button" onPress={back} hitSlop={8} style={[styles.row, {justifyContent: 'flex-start', gap: 6}]}><Feather name="arrow-left" size={18} color={colors.green}/><Text style={styles.link}>{text}</Text></Pressable>;
+  const BackLink = ({text}: {text: string}) => <Pressable accessibilityRole="button" onPress={back} hitSlop={8} style={[styles.row, {justifyContent: 'flex-start', gap: 6, minHeight: 44}]}><Feather name="arrow-left" size={18} color={colors.accentDark}/><Text style={styles.link}>{text}</Text></Pressable>;
   const WidthPicker = () => <View style={{gap: 6}}><Text style={styles.label}>Tamaño del papel</Text><Segmented items={[{id: '58', name: '58 mm'}, {id: '80', name: '80 mm'}]} value={String(width)} onChange={v => setWidth(Number(v) as 58 | 80)}/></View>;
 
   // ── Vista previa del comprobante: datos históricos guardados, nunca los precios actuales.
@@ -61,7 +62,7 @@ export function HistoryScreen({user, settings, run, busy, initialSale, initialCl
     <BackLink text="Volver al detalle de la venta"/>
     {sale.pdf_message && <Banner tone="orange" text={sale.pdf_message}/>}
     <WidthPicker/>
-    <View style={{backgroundColor: '#E4E9E4', borderRadius: 18, paddingVertical: 20, paddingHorizontal: 8}}><Receipt sale={sale} width={width}/></View>
+    <View style={{backgroundColor: colors.subtle, borderRadius: 18, paddingVertical: 20, paddingHorizontal: 8}}><Receipt sale={sale} width={width}/></View>
     <Text style={[styles.small, {textAlign: 'center'}]}>Vista de impresión en blanco y negro. Imprime al 100 %, sin “ajustar a página”.</Text>
   </Page>;
 
@@ -83,7 +84,7 @@ export function HistoryScreen({user, settings, run, busy, initialSale, initialCl
         <Text style={[styles.money, {fontSize: 15}]}>{cop(i.subtotal_cents)}</Text>
       </View>)}
       <Divider/>
-      <View style={styles.row}><Text style={styles.h2}>Total</Text><Text style={[styles.metric, {color: colors.green}]}>{cop(sale.total_cents)}</Text></View>
+      <View style={styles.row}><Text style={styles.h2}>Total</Text><Text style={styles.metric}>{cop(sale.total_cents)}</Text></View>
       {sale.payments?.map((p, i) => <InfoRow key={i} label="Método de pago" value={p.method === 'cash' ? 'Efectivo' : `Electrónico · ${p.platform_name}`}/>)}
     </Card>
     <Button title="Ver comprobante" icon="file-text" size="lg" onPress={() => setReceipt(true)} testID="view-receipt"/>
@@ -149,48 +150,64 @@ export function HistoryScreen({user, settings, run, busy, initialSale, initialCl
   const totals = page?.groups.method?.reduce((a, g) => ({count: a.count + g.count, total: a.total + g.total_cents}), {count: 0, total: 0});
   const sections: {day: string; items: Sale[]}[] = [];
   for (const s of list) { const day = dayLabel(s.created_at); const last = sections[sections.length - 1]; if (last?.day === day) last.items.push(s); else sections.push({day, items: [s]}); }
+  const rangeText = period === 'range' ? `${range.from ? shortDate(range.from + 'T12:00:00Z') : '…'} – ${range.to ? shortDate(range.to + 'T12:00:00Z') : '…'}` : '';
   const activeChips = [
+    period === 'range' && {key: 'range', text: rangeText, clear: () => { setPeriod('today'); setFrom(''); setTo(''); }},
     activeSession && {key: 'session', text: `Caja${sessionNumber ? ' #' + sessionNumber : ''}`, clear: () => setActiveSession('')},
     customer && {key: 'customer', text: customerName(customer) || 'Cliente', clear: () => setCustomer('')},
     seller && {key: 'seller', text: sellers.find(s => s.id === seller)?.name || 'Vendedor', clear: () => setSeller('')},
   ].filter(Boolean) as {key: string; text: string; clear: () => void}[];
+  const clearAll = () => { setPeriod('today'); setFrom(''); setTo(''); setMethod(''); setCustomer(''); setSeller(''); setActiveSession(''); };
+  const count = totals?.count ?? page?.count ?? 0;
 
   return <Page onRefresh={() => run(() => tab === 'sales' ? load(1) : api<Closure[]>('/closures').then(setClosures))}>
-    <Header eyebrow="HISTORIAL" title={tab === 'sales' ? 'Ventas' : 'Cierres de caja'}/>
+    <View style={[styles.row, {gap: 8}]}>
+      <Text accessibilityRole="header" style={[styles.title, {flex: 1}]}>Historial</Text>
+      {tab === 'sales' && <Pressable accessibilityRole="button" accessibilityLabel={`Más filtros${activeChips.length ? `, ${activeChips.length} activos` : ''}`} onPress={() => setFilters(true)} testID="history-filters"
+        style={({pressed}) => [{flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: activeChips.length ? colors.accent : colors.lineStrong, backgroundColor: activeChips.length ? colors.accentSoft : colors.white}, pressed && {opacity: 0.8}]}>
+        <Feather name="sliders" size={16} color={activeChips.length ? colors.accentDark : colors.ink}/><Text style={[styles.chipText, activeChips.length > 0 && {color: colors.accentDark}]}>Filtros{activeChips.length ? ` · ${activeChips.length}` : ''}</Text>
+      </Pressable>}
+    </View>
     {admin && <Segmented items={[{id: 'sales', name: 'Ventas'}, {id: 'closures', name: 'Cierres'}]} value={tab} onChange={setTab} testID="history-tabs"/>}
     {tab === 'sales' ? <>
-      <Choice items={PERIODS} value={period} onChange={v => setPeriod(v as Period)}/>
-      {period === 'range' && <View style={[styles.row, {alignItems: 'flex-start', gap: 10}]}>
-        <View style={{flex: 1}}><Field label="Desde" kind="date" value={from} onChange={setFrom} placeholder={bogotaDay(-30)}/></View>
-        <View style={{flex: 1}}><Field label="Hasta" kind="date" value={to} onChange={setTo} placeholder={bogotaDay(0)}/></View>
-      </View>}
-      {rangeError && <Text style={styles.fieldError}>{rangeError}</Text>}
-      <View style={[styles.row, {alignItems: 'flex-start', gap: 8}]}>
-        <View style={{flex: 1}}><Choice items={[{id: '', name: 'Todo pago'}, {id: 'cash', name: 'Efectivo'}, {id: 'electronic', name: 'Electrónico'}, {id:'credit',name:'Crédito'}]} value={method} onChange={setMethod}/></View>
-        <IconButton icon="sliders" label="Más filtros" onPress={() => setFilters(true)} tone={activeChips.length ? 'green' : 'gray'}/>
+      <View style={{gap: 8}}>
+        <Segmented items={PERIODS} value={period} onChange={v => setPeriod(v as Period)} testID="history-period"/>
+        {/* Medio de pago en una sola fila: se desliza si no cabe, sin empujar los resultados hacia abajo. */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{gap: 8}}>
+          {METHODS.map(m => <Chip key={m.id} text={m.name} on={method === m.id} onPress={() => setMethod(m.id)}/>)}
+        </ScrollView>
+        {activeChips.length > 0 && <View style={[styles.wrap, {alignItems: 'center'}]}>
+          {activeChips.map(c => <Pressable key={c.key} accessibilityRole="button" accessibilityLabel={`Quitar filtro ${c.text}`} onPress={c.clear} hitSlop={4} style={[styles.chip, styles.chipOn, {minHeight: 36}]}><Text style={[styles.chipText, {color: colors.accentDark}]}>{c.text}</Text><Feather name="x" size={14} color={colors.accentDark}/></Pressable>)}
+          <Pressable accessibilityRole="button" onPress={clearAll} hitSlop={10}><Text style={styles.link}>Limpiar</Text></Pressable>
+        </View>}
       </View>
-      {activeChips.length > 0 && <View style={styles.wrap}>{activeChips.map(c => <Pressable key={c.key} accessibilityRole="button" accessibilityLabel={`Quitar filtro ${c.text}`} onPress={c.clear} style={[styles.chip, styles.chipOn]}><Text style={[styles.chipText, {color: 'white'}]}>{c.text}</Text><Feather name="x" size={14} color="white"/></Pressable>)}</View>}
 
-      {page && <Card tone="green" style={{paddingVertical: 12}}>
-        <View style={styles.row}><View><Text style={[styles.small, {color: colors.greenDark}]}>{totals?.count ?? page.count} {(totals?.count ?? page.count) === 1 ? 'venta' : 'ventas'}</Text><Text testID="history-total" style={[styles.metric, {color: colors.greenDark}]}>{cop(totals?.total || 0)}</Text></View>
-          {admin && page.count > 0 && <Button title={showGroups ? 'Ocultar' : 'Totales'} icon="bar-chart-2" variant="ghost" size="sm" onPress={() => setShowGroups(!showGroups)}/>}</View>
-        {showGroups && admin && <View style={{gap: 8}}>
+      {page && <View style={{gap: 8}}>
+        <View style={[styles.row, {paddingHorizontal: 2}]}>
+          <Text style={styles.muted}>{count} {count === 1 ? 'venta' : 'ventas'}</Text>
+          <View style={[styles.row, {gap: 4}]}>
+            <Text testID="history-total" style={[styles.metric, {fontSize: 20}]}>{cop(totals?.total || 0)}</Text>
+            {admin && page.count > 0 && <IconButton icon={showGroups ? 'chevron-up' : 'bar-chart-2'} label={showGroups ? 'Ocultar totales' : 'Ver totales por grupo'} onPress={() => setShowGroups(!showGroups)} size={36}/>}
+          </View>
+        </View>
+        {showGroups && admin && <Card style={{gap: 8, paddingVertical: 12}}>
           <Choice items={[{id: 'method', name: 'Pago'}, {id: 'platform', name: 'Plataforma'}, {id: 'seller', name: 'Vendedor'}, {id: 'customer', name: 'Cliente'}, {id: 'date', name: 'Fecha'}]} value={group} onChange={setGroup}/>
           {page.groups[group]?.map((g, i) => <InfoRow key={i} label={`${group === 'customer' ? customerName(g.key || '') || g.key : group === 'seller' ? sellers.find(s => s.id === g.key)?.name || g.key : g.key === 'credit'?'Crédito':g.key === 'cash' ? 'Efectivo' : g.key === 'electronic' ? 'Electrónico' : g.key || 'Efectivo'} · ${g.count}`} value={cop(g.total_cents)}/>)}
-        </View>}
-      </Card>}
+        </Card>}
+      </View>}
 
       {!page && busy && <Loading text="Buscando ventas…"/>}
-      {page && list.length === 0 && <Empty icon="calendar" title={period === 'today' ? 'Sin ventas hoy' : 'Sin ventas en este filtro'} text={period === 'today' ? 'Las ventas confirmadas hoy aparecerán aquí.' : 'Prueba otro periodo o quita filtros.'} action={period !== 'all' || activeChips.length ? 'Ver todas las ventas' : undefined} onAction={() => { setPeriod('all'); setMethod(''); setCustomer(''); setSeller(''); setActiveSession(''); }}/>}
+      {rangeError && <Banner tone="orange" text={rangeError} action="Ajustar fechas" onAction={() => setFilters(true)}/>}
+      {page && list.length === 0 && <Empty icon="calendar" title={period === 'today' && !method && !activeChips.length ? 'Sin ventas hoy' : 'Sin ventas con estos filtros'} text={period === 'today' && !method && !activeChips.length ? 'Las ventas confirmadas hoy aparecerán aquí.' : 'Prueba otro periodo o quita filtros.'} action={period !== 'all' || method || activeChips.length ? 'Ver todas las ventas' : undefined} onAction={() => { clearAll(); setPeriod('all'); }}/>}
       {sections.map(section => <Section key={section.day} title={section.day.charAt(0).toUpperCase() + section.day.slice(1)}>
-        <View style={{backgroundColor: colors.white, borderRadius: 16, borderWidth: 1, borderColor: colors.line, overflow: 'hidden'}}>
+        <View style={{backgroundColor: colors.white, borderRadius: 14, borderWidth: 1, borderColor: colors.line, overflow: 'hidden'}}>
           {section.items.map((s, i) => <Pressable key={s.id} testID={`sale-row-${s.number}`} accessibilityRole="button" accessibilityLabel={`Venta ${saleNumber(s)}, ${s.snapshot.customer_name}, ${cop(s.total_cents)}`} onPress={() => run(async () => { setSale(await api<Sale>(`/sales/${s.id}`)); setReceipt(false); })}
-            style={({pressed}) => [{flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14, minHeight: 64}, i > 0 && {borderTopWidth: 1, borderTopColor: colors.line}, pressed && {backgroundColor: colors.greenSoft}]}>
+            style={({pressed}) => [{flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14, minHeight: 64}, i > 0 && {borderTopWidth: 1, borderTopColor: colors.line}, pressed && {backgroundColor: colors.accentSoft}]}>
             <View style={{flex: 1, gap: 2}}>
-              <Text style={{fontSize: 15, fontWeight: '800', color: colors.ink}}>Venta {saleNumber(s)}</Text>
+              <Text style={{fontSize: 16, fontWeight: '700', color: colors.ink}}>Venta {saleNumber(s)}</Text>
               <Text numberOfLines={1} style={styles.small}>{time(s.created_at)} · {s.snapshot.customer_name}{admin ? ` · ${s.snapshot.seller_name}` : ''}</Text>
             </View>
-            <View style={{alignItems: 'flex-end', gap: 4}}><Text style={[styles.money, {fontSize: 15}]}>{cop(s.total_cents)}</Text>{s.state==='ANULADA'&&<Badge text="ANULADA" tone="orange"/>}<Badge text={methodName(s)} tone={s.method === 'cash' ? 'green' : 'gray'}/></View>
+            <View style={{alignItems: 'flex-end', gap: 4}}><Text style={[styles.money, {fontSize: 15}]}>{cop(s.total_cents)}</Text>{s.state==='ANULADA'&&<Badge text="ANULADA" tone="orange"/>}<Badge text={methodName(s)} tone="gray"/></View>
           </Pressable>)}
         </View>
       </Section>)}
@@ -210,10 +227,18 @@ export function HistoryScreen({user, settings, run, busy, initialSale, initialCl
       </Card>)}
     </>}
 
-    <Sheet visible={filters} onClose={() => setFilters(false)} title="Más filtros" footer={<>
-      <Button title="Ver resultados" size="lg" onPress={() => setFilters(false)}/>
-      <Button title="Quitar filtros" variant="ghost" onPress={() => { setCustomer(''); setSeller(''); setActiveSession(''); setFilters(false); }}/>
+    <Sheet visible={filters} onClose={() => setFilters(false)} title="Filtros" subtitle="Hoy, Ayer, 7 días y medio de pago están en la pantalla principal" footer={<>
+      <Button title="Ver resultados" size="lg" disabled={!!rangeError} onPress={() => setFilters(false)}/>
+      <Button title="Quitar todos los filtros" variant="ghost" onPress={() => { clearAll(); setFilters(false); }}/>
     </>}>
+      <View style={{gap: 8}}>
+        <Text style={styles.label}>Rango de fechas</Text>
+        <View style={[styles.row, {alignItems: 'flex-start', gap: 10}]}>
+          <View style={{flex: 1}}><Field label="Desde" kind="date" value={from} onChange={t => { setFrom(t); setPeriod('range'); }} placeholder={bogotaDay(-30)} returnKey="next"/></View>
+          <View style={{flex: 1}}><Field label="Hasta" kind="date" value={to} onChange={t => { setTo(t); setPeriod('range'); }} placeholder={bogotaDay(0)}/></View>
+        </View>
+        {rangeError ? <Text style={styles.fieldError}>{rangeError}</Text> : <Text style={styles.hint}>Formato AAAA-MM-DD. Deja uno vacío para no limitar ese extremo.</Text>}
+      </View>
       {admin && sellers.length > 0 && <View style={{gap: 8}}><Text style={styles.label}>Vendedor</Text><Choice items={[{id: '', name: 'Todos'}, ...sellers]} value={seller} onChange={setSeller}/></View>}
       <View style={{gap: 8}}>
         <Text style={styles.label}>Cliente{customer ? `: ${customerName(customer)}` : ''}</Text>

@@ -43,7 +43,7 @@ export function CatalogScreen({products, customers, user, run, refresh, busy, in
   const canCreate = admin || !isProducts;
 
   return <Page onRefresh={() => run(refresh)}>
-    <Header eyebrow="TU NEGOCIO" title="Catálogo"/>
+    <Header title="Catálogo"/>
     <Segmented items={[{id: 'products', name: `Productos (${products.filter(p => p.active).length})`}, {id: 'customers', name: `Clientes (${customers.length})`}]} value={tab} onChange={v => { setTab(v as typeof tab); setQuery(''); setLimit(PAGE); }} testID="catalog-tabs"/>
     <View style={[styles.row, {gap: 8}]}>
       <View style={{flex: 1}}><SearchBar value={query} onChange={t => { setQuery(t); setLimit(PAGE); }} placeholder={isProducts ? 'Buscar producto' : 'Buscar cliente o ciudad'}/></View>
@@ -58,14 +58,14 @@ export function CatalogScreen({products, customers, user, run, refresh, busy, in
         const p = 'price_cents' in item ? item : null;
         const editable = admin;
         return <Pressable key={item.id} testID={`catalog-${item.name}`} accessibilityRole={editable ? 'button' : undefined} accessibilityLabel={editable ? `Editar ${item.name}` : item.name} disabled={!editable} onPress={() => open(item)}
-          style={({pressed}) => [{flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderRadius: 14, borderWidth: 1, borderColor: colors.line, paddingVertical: 12, paddingHorizontal: 14, minHeight: 62}, pressed && {backgroundColor: '#F7FAF7'}, p && !p.active && {opacity: 0.6}]}>
-          <View style={{width: 40, height: 40, borderRadius: 12, backgroundColor: p ? (p.unit === 'kg' ? colors.yellowSoft : colors.greenSoft) : colors.greenSoft, alignItems: 'center', justifyContent: 'center'}}>
-            {p ? <Text style={{fontSize: 12, fontWeight: '900', color: p.unit === 'kg' ? '#7A5600' : colors.greenDark}}>{p.unit === 'kg' ? 'KG' : 'UND'}</Text> : <Text style={{fontSize: 16, fontWeight: '800', color: colors.green}}>{item.name[0]?.toUpperCase()}</Text>}
+          style={({pressed}) => [{flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderRadius: 14, borderWidth: 1, borderColor: colors.line, paddingVertical: 12, paddingHorizontal: 14, minHeight: 62}, pressed && {backgroundColor: colors.subtle}, p && !p.active && {opacity: 0.6}]}>
+          <View style={{width: 40, height: 40, borderRadius: 12, backgroundColor: colors.subtle, alignItems: 'center', justifyContent: 'center'}}>
+            {p ? <Text style={{fontSize: 12, fontWeight: '900', color: p.unit === 'kg' ? colors.text : colors.ink}}>{p.unit === 'kg' ? 'KG' : 'UND'}</Text> : <Text style={{fontSize: 16, fontWeight: '800', color: colors.ink}}>{item.name[0]?.toUpperCase()}</Text>}
           </View>
           <View style={{flex: 1, gap: 3}}>
             <Text numberOfLines={2} style={{fontSize: 15, fontWeight: '700', color: colors.ink}}>{item.name}</Text>
             {p ? <View style={[styles.row, {justifyContent: 'flex-start', gap: 8, flexWrap: 'wrap'}]}>
-              <Text style={[styles.money, {fontSize: 14, color: colors.greenDark}]}>{cop(p.price_cents)}<Text style={styles.small}>/{p.unit === 'kg' ? 'kg' : 'und'}</Text></Text>
+              <Text style={[styles.money, {fontSize: 14, color: colors.ink}]}>{cop(p.price_cents)}<Text style={styles.small}>/{p.unit === 'kg' ? 'kg' : 'und'}</Text></Text>
               <Text style={[styles.small, p.stock_milli === 0 && {color: colors.red, fontWeight: '700'}]}>{p.stock_milli === null ? 'Sin control de stock' : p.stock_milli === 0 ? 'Agotado' : `Stock: ${quantityLabel(p.stock_milli, p.unit)}`}</Text>
               {!p.active && <Badge text="Inactivo" tone="gray"/>}
             </View> : <Text style={styles.small}><Feather name="map-pin" size={12}/> {(item as Customer).city}</Text>}
@@ -94,12 +94,12 @@ export function CatalogScreen({products, customers, user, run, refresh, busy, in
         <Field label={unit === 'kg' ? 'Precio por kilogramo' : 'Precio por unidad'} kind="decimal" prefix="$" value={price} onChange={setPrice} placeholder="0" error={errors.price} hint={priceCents ? `${cop(priceCents)} por ${unit === 'kg' ? 'kg' : 'unidad'}` : undefined} testID="catalog-price"/>
         <View style={[styles.row, {paddingVertical: 4}]}>
           <View style={{flex: 1}}><Text style={styles.label}>Controlar existencias</Text><Text style={styles.hint}>Descuenta automáticamente con cada venta.</Text></View>
-          <Switch accessibilityLabel="Controlar existencias" value={tracks} onValueChange={setTracks} trackColor={{true: colors.green, false: colors.lineStrong}} thumbColor={colors.white}/>
+          <Switch accessibilityLabel="Controlar existencias" value={tracks} onValueChange={setTracks} trackColor={{true: colors.accent, false: colors.lineStrong}} thumbColor={colors.white}/>
         </View>
         {tracks && <Field label={`Existencias en ${unit === 'kg' ? 'kilogramos' : 'unidades'}`} kind={unit === 'kg' ? 'decimal' : 'number'} value={stock} onChange={setStock} placeholder="0" error={errors.stock} testID="catalog-stock"/>}
         <View style={[styles.row, {paddingVertical: 4}]}>
           <View style={{flex: 1}}><Text style={styles.label}>Disponible para la venta</Text><Text style={styles.hint}>Los inactivos no aparecen en Vender; su historial se conserva.</Text></View>
-          <Switch accessibilityLabel="Disponible para la venta" value={active} onValueChange={setActive} trackColor={{true: colors.green, false: colors.lineStrong}} thumbColor={colors.white}/>
+          <Switch accessibilityLabel="Disponible para la venta" value={active} onValueChange={setActive} trackColor={{true: colors.accent, false: colors.lineStrong}} thumbColor={colors.white}/>
         </View>
       </> : <Field label="Ciudad o municipio" kind="name" value={city} onChange={setCity} placeholder="Ej. El Rosal" testID="catalog-city"/>}
     </Sheet>

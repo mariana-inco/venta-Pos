@@ -74,15 +74,14 @@ export function CashScreen({sessions, user, run, refresh, busy, onClosure, onHis
   </Page>;
 
   return <Page onRefresh={() => run(refresh)}>
-    <Header eyebrow="CONTROL DE CAJA" title="Caja" subtitle={own ? 'Tu caja está abierta.' : 'Abre tu caja para empezar a vender.'}/>
+    <Header title="Caja" subtitle={own ? 'Tu caja está abierta.' : 'Abre tu caja para empezar a vender.'}/>
     {own ? <SessionCard session={own} mine admin={admin} busy={busy} onHistory={onHistory} onClose={() => run(() => startClose(own))} onSell={onSell}/>
       : <Card testID="open-cash-form">
           <View style={[styles.row, {justifyContent: 'flex-start'}]}>
-            <View style={{width: 40, height: 40, borderRadius: 20, backgroundColor: colors.greenSoft, alignItems: 'center', justifyContent: 'center'}}><Feather name="unlock" size={18} color={colors.green}/></View>
+            <View style={{width: 40, height: 40, borderRadius: 20, backgroundColor: colors.subtle, alignItems: 'center', justifyContent: 'center'}}><Feather name="unlock" size={18} color={colors.ink}/></View>
             <View style={{flex: 1}}><Text style={styles.h2}>Abrir mi caja</Text><Text style={styles.small}>Cuenta el dinero que hay en el cajón antes de empezar.</Text></View>
           </View>
-          <InfoRow label="Responsable" value={user.name}/>
-          <InfoRow label="Fecha y hora" value={`${shortDate(now.toISOString())} · ${time(now.toISOString())}`}/>
+          <Text style={styles.small}>{user.name} · {shortDate(now.toISOString())} · {time(now.toISOString())}</Text>
           <Field label="Monto inicial (base en efectivo)" kind="decimal" prefix="$" value={opening} onChange={setOpening} placeholder="0" hint="Es el dinero para dar cambio. No cuenta como venta." error={opening && openingCents === null ? 'Escribe un valor válido, por ejemplo 100.000' : null} testID="opening-amount"/>
           <Choice items={OPENING_PRESETS.map(v => ({id: String(v), name: cop(v)}))} value={openingCents !== null && opening.trim() ? String(openingCents) : ''} onChange={v => setOpening(moneyInput(Number(v)))}/>
           <Button title="Abrir caja" icon="unlock" size="lg" disabled={busy || openingCents === null} loading={busy} testID="open-cash"
@@ -122,9 +121,9 @@ function SessionCard({session: s, mine, admin, busy, onHistory, onClose, onSell}
       <View style={{flex: 1}}><Text style={styles.h2}>{label(s)}{mine ? '' : ` · ${s.opener_name}`}</Text><Text style={styles.small}>Abierta {shortDate(s.opened_at)} · {time(s.opened_at)} · {s.opener_name}</Text></View>
       <Badge text="Abierta" icon="unlock"/>
     </View>
-    <View style={{backgroundColor: colors.greenSoft, borderRadius: 14, padding: 14, gap: 2}}>
-      <Text style={[styles.small, {color: colors.greenDark}]}>Total vendido · {s.sale_count} {s.sale_count === 1 ? 'venta' : 'ventas'}</Text>
-      <Text style={[styles.metric, {fontSize: 28, color: colors.greenDark}]}>{cop(s.total_cents)}</Text>
+    <View style={{backgroundColor: colors.subtle, borderRadius: 12, padding: 14, gap: 2}}>
+      <Text style={[styles.small, {color: colors.ink}]}>Total vendido · {s.sale_count} {s.sale_count === 1 ? 'venta' : 'ventas'}</Text>
+      <Text style={[styles.metric, {fontSize: 28, color: colors.ink}]}>{cop(s.total_cents)}</Text>
     </View>
     <InfoRow label="Efectivo vendido" value={cop(s.cash_cents)}/>
     <InfoRow label="Pagos electrónicos" value={cop(s.electronic_cents)}/>

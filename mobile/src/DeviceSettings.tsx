@@ -1,17 +1,24 @@
 import React,{useEffect,useState} from 'react';
 import {Text,View} from 'react-native';
-import {Badge,Banner,Button,Card,Choice,Confirm,styles} from './ui';
+import {Banner,Button,Card,Choice,Confirm,styles} from './ui';
 import {offlineEnabled,subscribeSync,syncNow,type SyncStatus} from './offline/runtime';
 import {pairedPrinters,printerConfig,savePrinter,testPrinter,printerAvailable,type Printer,type PrinterConfig} from './printing/printer';
 import {api} from './api';
 import type {Run} from '../App';
 const initial:SyncStatus={pending:0,blocked:0,error:null,last_sync:null,catalog_ready:false,running:false,online:true};
-export function SyncBanner(){
+/** Estado real de la cola local: solo muestra "sincronizado" cuando no queda nada pendiente ni hay error. */
+export function syncSummary(status:SyncStatus):{text:string;tone:'green'|'orange'|'gray'|'red';icon:'check-circle'|'refresh-cw'|'alert-triangle'|'wifi-off'|'upload-cloud'}{
+ if(status.blocked)return {text:`${status.blocked} por revisar`,tone:'orange',icon:'alert-triangle'};
+ if(status.running)return {text:'Sincronizando…',tone:'gray',icon:'refresh-cw'};
+ if(status.pending&&status.error)return {text:`${status.pending} sin enviar · revisar`,tone:'orange',icon:'alert-triangle'};
+ if(!status.online)return {text:status.pending?`Sin conexión · ${status.pending} en el equipo`:'Sin conexión',tone:'gray',icon:'wifi-off'};
+ if(status.pending)return {text:`${status.pending} pendientes de enviar`,tone:'gray',icon:'upload-cloud'};
+ return {text:'Sincronizado',tone:'green',icon:'check-circle'};
+}
+export function useSyncStatus(){
  const [status,setStatus]=useState(initial);
  useEffect(()=>offlineEnabled?subscribeSync(setStatus):undefined,[]);
- if(!offlineEnabled)return null;
- const text=status.running?'Sincronizando…':status.blocked?`${status.pending} operaciones guardadas · requiere revisión`:status.pending?`${status.pending} operaciones guardadas · pendientes de enviar`:status.online?'Guardado en el equipo · sincronizado':'Sin conexión · puedes seguir vendiendo';
- return <View style={{paddingHorizontal:12,paddingVertical:6}} accessibilityLiveRegion="polite"><Badge text={text} tone={status.blocked?'orange':status.pending||!status.online?'gray':'green'}/></View>;
+ return offlineEnabled?status:null;
 }
 export function DeviceSettings({run,busy}:{run:Run;busy:boolean}){
  const [status,setStatus]=useState(initial),[printers,setPrinters]=useState<Printer[]>([]),[selected,setSelected]=useState<PrinterConfig|null>(null),[width,setWidth]=useState('58'),[encoding,setEncoding]=useState('2');

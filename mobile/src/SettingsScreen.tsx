@@ -31,7 +31,7 @@ export function SettingsScreen({user, settings, platforms, run, refresh, busy, l
 
   return <Page>
     <Card style={{flexDirection: 'row', alignItems: 'center', gap: 14}}>
-      <View style={{width: 56, height: 56, borderRadius: 28, backgroundColor: colors.green, alignItems: 'center', justifyContent: 'center'}}><Text style={{color: 'white', fontSize: 20, fontWeight: '800'}}>{initials(user.name)}</Text></View>
+      <View style={{width: 56, height: 56, borderRadius: 28, backgroundColor: colors.ink, alignItems: 'center', justifyContent: 'center'}}><Text style={{color: 'white', fontSize: 20, fontWeight: '800'}}>{initials(user.name)}</Text></View>
       <View style={{flex: 1, gap: 3}}>
         <Text accessibilityRole="header" style={styles.h2}>{user.name}</Text>
         <Text style={styles.small}>@{user.username}</Text>
@@ -40,7 +40,7 @@ export function SettingsScreen({user, settings, platforms, run, refresh, busy, l
     </Card>
 
     <Card style={{alignItems: 'center', gap: 6}}>
-      <Logo width={120}/>
+      <Logo width={64}/>
       <Text style={[styles.h2, {textAlign: 'center'}]}>{settings.business_name}</Text>
       {[settings.business_nit && `NIT ${settings.business_nit}`, [settings.business_address, settings.business_city].filter(Boolean).join(' · '), settings.business_phone && `Tel. ${settings.business_phone}`].filter(Boolean).map((t, i) => <Text key={i} style={[styles.small, {textAlign: 'center'}]}>{t}</Text>)}
       <Text style={[styles.small, {textAlign: 'center'}]}>Comprobantes en papel de {settings.paper_width} mm · Hora de Colombia</Text>
@@ -61,7 +61,7 @@ export function SettingsScreen({user, settings, platforms, run, refresh, busy, l
       </Group>
 
       <Group id="platforms" open={open} onToggle={setOpen} icon="smartphone" title="Pagos electrónicos" subtitle={`${platforms.filter(p => p.active).length} métodos activos en Vender`}>
-        {platforms.map(p => <View key={p.id} style={styles.row}><Text style={[styles.body, {flex: 1}]}>{p.name}</Text><Switch accessibilityLabel={`Activar ${p.name}`} value={!!p.active} disabled={busy} trackColor={{true: colors.green, false: colors.lineStrong}} thumbColor={colors.white} onValueChange={active => run(async () => { await api(`/platforms/${p.id}`, 'PUT', {name: p.name, active}); await refresh(); })}/></View>)}
+        {platforms.map(p => <View key={p.id} style={styles.row}><Text style={[styles.body, {flex: 1}]}>{p.name}</Text><Switch accessibilityLabel={`Activar ${p.name}`} value={!!p.active} disabled={busy} trackColor={{true: colors.accent, false: colors.lineStrong}} thumbColor={colors.white} onValueChange={active => run(async () => { await api(`/platforms/${p.id}`, 'PUT', {name: p.name, active}); await refresh(); })}/></View>)}
         <Field label="Nuevo método de pago" value={platformName} onChange={setPlatformName} placeholder="Ej. Bancolombia QR"/>
         <Button title="Agregar método" icon="plus" variant="secondary" disabled={busy || !platformName.trim()} onPress={() => run(async () => { await api('/platforms', 'POST', {name: platformName.trim(), active: true}); setPlatformName(''); await refresh(); }, 'Método agregado')}/>
       </Group>
@@ -69,7 +69,7 @@ export function SettingsScreen({user, settings, platforms, run, refresh, busy, l
       <Group id="users" open={open} onToggle={setOpen} icon="users" title="Usuarios y accesos" subtitle={`${users.filter(u => u.active).length} usuarios activos`}>
         {users.map(u => <View key={u.id} style={styles.row}>
           <View style={{flex: 1}}><Text style={{color: colors.ink, fontWeight: '700', fontSize: 15}}>{u.name}{u.id === user.id ? ' (tú)' : ''}</Text><Text style={styles.small}>@{u.username} · {u.role === 'admin' ? 'Administrador' : 'Vendedor'}</Text></View>
-          <Switch accessibilityLabel={`Acceso de ${u.name}`} value={!!u.active} disabled={busy || u.id === user.id} trackColor={{true: colors.green, false: colors.lineStrong}} thumbColor={colors.white} onValueChange={active => run(async () => { await api(`/users/${u.id}`, 'PATCH', {active}); await loadUsers(); }, active ? 'Usuario activado' : 'Usuario desactivado')}/>
+          <Switch accessibilityLabel={`Acceso de ${u.name}`} value={!!u.active} disabled={busy || u.id === user.id} trackColor={{true: colors.accent, false: colors.lineStrong}} thumbColor={colors.white} onValueChange={active => run(async () => { await api(`/users/${u.id}`, 'PATCH', {active}); await loadUsers(); }, active ? 'Usuario activado' : 'Usuario desactivado')}/>
         </View>)}
         <Divider/>
         <Text style={styles.sectionTitle}>Crear usuario</Text>
@@ -101,8 +101,8 @@ export function SettingsScreen({user, settings, platforms, run, refresh, busy, l
 function Group({id, open, onToggle, icon, title, subtitle, children}: {id: string; open: string; onToggle: (id: string) => void; icon: React.ComponentProps<typeof Feather>['name']; title: string; subtitle: string; children: React.ReactNode}) {
   const on = open === id;
   return <Card style={{padding: 0, gap: 0, overflow: 'hidden'}}>
-    <Pressable accessibilityRole="button" accessibilityState={{expanded: on}} accessibilityLabel={title} onPress={() => onToggle(on ? '' : id)} style={({pressed}) => [{flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, minHeight: 64}, pressed && {backgroundColor: '#F7FAF7'}]}>
-      <View style={{width: 38, height: 38, borderRadius: 12, backgroundColor: colors.greenSoft, alignItems: 'center', justifyContent: 'center'}}><Feather name={icon} size={18} color={colors.green}/></View>
+    <Pressable accessibilityRole="button" accessibilityState={{expanded: on}} accessibilityLabel={title} onPress={() => onToggle(on ? '' : id)} style={({pressed}) => [{flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, minHeight: 64}, pressed && {backgroundColor: colors.subtle}]}>
+      <View style={{width: 38, height: 38, borderRadius: 12, backgroundColor: colors.subtle, alignItems: 'center', justifyContent: 'center'}}><Feather name={icon} size={18} color={colors.ink}/></View>
       <View style={{flex: 1}}><Text style={[styles.h2, {fontSize: 16}]}>{title}</Text><Text style={styles.small}>{subtitle}</Text></View>
       <Feather name={on ? 'chevron-up' : 'chevron-down'} size={20} color={colors.muted}/>
     </Pressable>
