@@ -42,7 +42,7 @@ No elimina ni reconstruye tablas existentes. Los movimientos, términos, anulaci
 
 Se implementó recepción por campo de búsqueda y terminador Enter. El módulo Android existente incorpora además captura de eventos de teclado físico a través de Window.Callback mientras la pantalla de venta está activa. Acepta Enter, Enter numérico y Tab; conserva el código como texto. Las lecturas se emiten a la app y no se insertan en campos de cantidad/pago/cliente. Si hay un formulario abierto, la app solicita terminarlo antes de recibir otro producto. El teclado táctil permanece disponible para cantidades y digitación manual.
 
-Este adaptador cubre lectores que generan KeyEvent de teclado. No demuestra cómo está configurada esta unidad H10S: un lector que escriba mediante InputConnection, intents propietarios o SDK exige su documentación y una integración adicional. No se inventaron nombres de intents ni APIs del fabricante. La captura Kotlin no ha sido compilada ni probada físicamente en esta sesión. El recorrido web con terminador de teclado es una prueba de software; no constituye evidencia del lector H10S.
+Este adaptador cubre lectores que generan KeyEvent de teclado. No demuestra cómo está configurada esta unidad H10S: un lector que escriba mediante InputConnection, intents propietarios o SDK exige su documentación y una integración adicional. No se inventaron nombres de intents ni APIs del fabricante. La captura Kotlin fue compilada en el APK 1.1.0; no se ha probado físicamente en esta sesión. El recorrido web con terminador de teclado es una prueba de software; no constituye evidencia del lector H10S.
 
 ## Impresora
 
@@ -56,12 +56,12 @@ La inspección de la configuración generada y de las dependencias muestra:
 
 - applicationId/namespace: `com.ventapos.mobile`, conservado.
 - minSdk: 24; targetSdk: 36; compileSdk: 37. Android 13 es API 33, por lo que el mínimo declarado no lo excluye.
-- ABIs declaradas: `armeabi-v7a,arm64-v8a,x86,x86_64`. No se verificaron bibliotecas de un APK final ni las ABIs del dispositivo.
-- versionCode: 1; versionName: 1.0.0, conservados hasta conocer la instalación anterior.
+- APK 1.1.0 verificado con bibliotecas `armeabi-v7a` y `arm64-v8a`. Las ABIs del dispositivo siguen sin comprobarse mediante ADB.
+- versionCode: 2; versionName: 1.1.0. La pantalla de acceso muestra la versión y el servidor.
 - El script local produce una compilación de prueba con firma de desarrollo. Una instalación previa con otro certificado puede requerir recuperar la clave anterior. No se ha confirmado que ese sea el error reportado.
-- No había JDK/Android SDK de compilación disponibles. Se descargaron las herramientas oficiales Platform Tools a `tmp/platform-tools` para consultar ADB. `adb devices -l` no encontró equipos conectados.
+- Se instalaron localmente Temurin JDK 21 y las herramientas oficiales Android SDK. La compilación nativa `assembleRelease` finalizó correctamente. `adb devices -l` no encontró equipos conectados.
 
-No se generó un APK sustitutivo: todavía no se conoce la causa exacta del rechazo del instalador, como exige el requerimiento. Tampoco se comprobó la apertura de la app en Android 13.
+Se generó `output/dannys-pos-1.1.0-neotek.apk` para actualizar la interfaz antigua que el usuario tiene instalada. Firma APK v2 verificada con `apksigner`; certificado de desarrollo. SHA-256: `44bb1f7ba8c23059209ce058d9ee0b685ce3dfa61b6400f4d963b1dc4ad7371c`. Esto no identifica la causa del rechazo histórico del instalador ni comprueba la apertura en Android 13. El usuario autorizó descartar los datos locales del dispositivo si fuera necesario reinstalar; la base de datos del servidor no se elimina.
 
 Con la H10S conectada y autorizada:
 
@@ -95,7 +95,7 @@ Fuentes: [ADB oficial](https://developer.android.com/tools/adb), [soporte de arq
 - JavaScript Android: `npm exec -w mobile -- expo export --platform android --output-dir ../output/android-bundle`. Esto no es una compilación nativa ni un APK.
 - Muestras: `node scripts/receipt-examples.mjs` genera tres PDF sin crear ventas: un producto, varios y crédito. Ancho 164,409 pt = 58 mm, una página cada uno; alturas distintas. Revisados con pdfinfo y renderizado Poppler.
 
-Pendientes de aceptación: compilación nativa del manejador del lector, causa exacta del instalador, APK firmado con continuidad de actualización, instalación/apertura, lector real con lecturas consecutivas y cantidades, servicio/SDK de la impresora interna, impresión física legible y venta completa en la H10S. Sin esas verificaciones, la actualización no se considera terminada para producción en ese modelo.
+Pendientes de aceptación: causa exacta del instalador, continuidad de firma con el APK anterior, instalación/apertura, lector real con lecturas consecutivas y cantidades, servicio/SDK de la impresora interna, impresión física legible y venta completa en la H10S. Sin esas verificaciones, la actualización no se considera terminada para producción en ese modelo.
 
 ## Investigación adicional del hardware
 
@@ -166,3 +166,14 @@ Incluye los ajustes Expo que ya estaban pendientes al iniciar y los cambios de e
 - `server/src/validation.js`
 - `server/test/commerce.test.js`
 - `server/test/receipt.test.js`
+
+## Actualización por LocalSend — APK 1.1.0
+
+1. Descargar `output/dannys-pos-1.1.0-neotek.apk` al equipo desde el que se enviará.
+2. Conectar ese equipo y la Neotek a la misma red Wi-Fi y abrir LocalSend en ambos. No hace falta volver a instalar F-Droid.
+3. En el equipo emisor: Enviar → Archivo → seleccionar el APK → seleccionar la Neotek. Aceptar la transferencia en la terminal.
+4. Abrir el APK recibido e instalar. Si Android solicita permiso para instalar aplicaciones desde esa fuente, habilitarlo para la aplicación que abre el archivo.
+5. Si informa conflicto de paquete o firma, desinstalar únicamente DANNY'S POS y volver a abrir el APK. Esta alternativa borra sus datos locales; fue autorizada por el usuario. No elimina los registros del servidor.
+6. Abrir DANNY'S POS y comprobar «Versión 1.1.0» y «Servidor: https://backend-pos.dromos.co/» en el acceso.
+
+Verificación de esta entrega: TypeScript correcto, compilación nativa correcta, firma v2 válida, applicationId conservado, minSdk 24, targetSdk 36, compileSdk 37 y ambas ABIs ARM presentes. El APK incluye el adaptador de lector por teclado físico. Su funcionamiento real y la impresión interna siguen pendientes de prueba en la H10S.

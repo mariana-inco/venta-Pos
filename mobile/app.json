@@ -2,7 +2,7 @@
   "expo": {
     "name": "DANNY'S POS",
     "slug": "venta-pos",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "scheme": "ventapos",
@@ -15,7 +15,8 @@
     },
     "android": {
       "package": "com.ventapos.mobile",
-      "allowBackup": false
+      "allowBackup": false,
+      "versionCode": 2
     },
     "plugins": [
       "expo-secure-store",

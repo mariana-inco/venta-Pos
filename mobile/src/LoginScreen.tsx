@@ -22,6 +22,7 @@ export function LoginScreen({busy,onSubmit}:{busy:boolean;onSubmit:(username:str
   </Card>
   <View style={{alignItems:'center',gap:4}}>
    <Text style={[styles.small,{textAlign:'center'}]}>¿No tienes usuario? Pídelo al administrador del negocio.</Text>
+   <Text style={styles.small}>Versión {require('../app.json').expo.version}</Text>
    <Text style={[styles.small,{fontSize:11,textAlign:'center'}]}>Servidor: {API_URL}</Text>
   </View>
  </Page>;

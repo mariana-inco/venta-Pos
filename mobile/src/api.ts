@@ -14,6 +14,7 @@ let currentUser:User|null=null;
 export async function api<T>(path:string,method='GET',body?:unknown):Promise<T>{
  if(offlineEnabled&&currentUser){const local=await localRequest(currentUser,path,method,body);if(local.handled)return local.value as T;}
  const result=await remote<T>(path,method,body,token);
+ if(offlineEnabled&&path==='/settings'&&method==='GET')return {...result,paper_width:(await printerConfig())?.width||58} as T;
  if(offlineEnabled&&method==='POST'&&path==='/sales')await cacheLegacySale(result);
  if(offlineEnabled&&method!=='GET')await syncNow();
  return result;
