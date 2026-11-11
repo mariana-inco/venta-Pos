@@ -31,7 +31,7 @@ export function SettingsScreen({user, settings, platforms, run, refresh, busy, l
 
   return <Page>
     <Card style={{flexDirection: 'row', alignItems: 'center', gap: 14}}>
-      <View style={{width: 56, height: 56, borderRadius: 28, backgroundColor: colors.ink, alignItems: 'center', justifyContent: 'center'}}><Text style={{color: 'white', fontSize: 20, fontWeight: '800'}}>{initials(user.name)}</Text></View>
+      <View style={{width: 56, height: 56, borderRadius: 28, backgroundColor: colors.accentDark, alignItems: 'center', justifyContent: 'center'}}><Text style={{color: 'white', fontSize: 20, fontWeight: '800'}}>{initials(user.name)}</Text></View>
       <View style={{flex: 1, gap: 3}}>
         <Text accessibilityRole="header" style={styles.h2}>{user.name}</Text>
         <Text style={styles.small}>@{user.username}</Text>

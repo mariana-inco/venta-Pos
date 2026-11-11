@@ -11,7 +11,7 @@ export function LoginScreen({busy,onSubmit}:{busy:boolean;onSubmit:(username:str
  return <Page>
   <View style={{alignItems:'center',gap:6,marginTop:16}}>
    <Logo width={96}/>
-   <Text accessibilityRole="header" style={[styles.title,{textAlign:'center'}]}>Dok Pollo MC</Text>
+   <Text accessibilityRole="header" style={[styles.title,{textAlign:'center'}]}>DOK POLLO MC</Text>
    <Text style={[styles.muted,{textAlign:'center'}]}>Punto de venta · pollos campesinos</Text>
   </View>
   <Card style={{width:'100%',maxWidth:440,alignSelf:'center',gap:14}}>

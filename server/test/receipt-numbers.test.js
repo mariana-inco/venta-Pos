@@ -23,7 +23,7 @@ test('Serie global: reservas disjuntas, ventas online, duplicados, aislamiento y
 test('Ticket: no expone UUID, conserva P-01, formato compacto y columnas de 58 mm',()=>{
  const sale={id:'internal-sale-id',number:9,created_at:'2026-11-10T18:00:00Z',total_cents:400000,snapshot:{business_name:"DISTRIBUIDORA & SALSAMENTARIA DANNY'S",receipt_number:'P-01',ticket_number:'internal-device-id/3',seller_name:'Ana',customer_name:'Mariana'},items:[{name:'Muslo de pollo',unit:'kg',quantity_milli:500,price_cents:800000,subtotal_cents:400000}],payments:[{method:'electronic',platform_name:'Nequi'}]};
  const text=ticketLines(sale).join('\n');
- assert.ok(text.includes('Dok Pollo MC'));assert.ok(text.includes('P-01'));assert.ok(text.includes('0,5 KG x $ 8.000'));
+ assert.ok(text.includes('DOK POLLO MC'));assert.ok(text.includes('P-01'));assert.ok(text.includes('0,5 KG x $ 8.000'));
  assert.ok(!text.includes('internal-'));assert.ok(!text.includes('ID venta'));assert.ok(!text.includes('DANNY'));
  assert.ok(ticketLines(sale).every(l=>l.length<=32));
  assert.equal(saleNumber({...sale,snapshot:{ticket_number:'legacy-device-id/42'}}),'P-09');

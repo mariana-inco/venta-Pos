@@ -23,7 +23,7 @@ export function ticketLines(record,kind='sale',width=58){
   for(const p of record.payments||[])pair('Pago',p.method==='cash'?'EFECTIVO':p.platform_name||'ELECTRÓNICO');
   if(s.cash_received_cents!=null){pair('Recibido',money(s.cash_received_cents));pair('Cambio',money(s.cash_change_cents||0));}
   if(s.credit){pair('Abono inicial',money(s.initial_paid_cents||0));pair('Saldo al emitir',money(s.initial_balance_cents||0));center((s.initial_balance_cents||0)===0?'PAGADA':s.initial_paid_cents?'PAGO PARCIAL':'PENDIENTE');}
-  rule();center('¡Gracias por su compra!');center('Dok Pollo MC');add('');center('Comprobante de venta.');center('No es factura electrónica.');
+  rule();center('¡Gracias por su compra!');center('DOK POLLO MC');add('');center('Comprobante de venta.');center('No es factura electrónica.');
  }else{
   add('Abrió: '+s.opener_name);add('Cerró: '+s.admin_name);rule();
   pair('Ventas',String(s.sale_count));pair('Total vendido',money(s.total_cents));pair('Base inicial',money(s.opening_cents));
@@ -36,6 +36,6 @@ export function ticketLines(record,kind='sale',width=58){
 const escape=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function ticketHtml(record,kind='sale',width=58,logoData=''){
  const lines=ticketLines(record,kind,width);
- const logo=/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(logoData)?`<img alt="Dok Pollo MC" src="${logoData}">`:'';
+ const logo=/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(logoData)?`<img alt="DOK POLLO MC" src="${logoData}">`:'';
  return `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><style>@page{size:${width}mm auto;margin:4mm 5mm}body{margin:0;color:#000;background:white;width:${width-10}mm}img{display:block;width:24mm;height:24mm;object-fit:contain;margin:0 auto 2mm;filter:grayscale(1) contrast(2)}pre{font:10px monospace;white-space:pre-wrap;overflow-wrap:anywhere;margin:0}</style></head><body>${logo}<pre>${escape(lines.join('\n'))}</pre></body></html>`;
 }

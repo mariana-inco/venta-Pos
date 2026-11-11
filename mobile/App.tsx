@@ -16,7 +16,7 @@ import {syncSummary,useSyncStatus} from './src/DeviceSettings';
 import {offlineEnabled,startSync,subscribeSync} from './src/offline/runtime';
 import {OperationsScreen} from './src/OperationsScreen';
 import {SettingsScreen} from './src/SettingsScreen';
-// Cinco pestañas caben desde 320 px. Vender es la acción principal (botón carbón); la ubicación actual se marca aparte con morado.
+// Cinco pestañas caben desde 320 px. Vender es la acción principal (botón morado); la sección actual se marca con la barra superior y el texto.
 const tabs=[{id:'home',name:'Inicio',icon:'home'},{id:'cash',name:'Caja',icon:'inbox'},{id:'sale',name:'Vender',icon:'shopping-cart'},{id:'catalog',name:'Catálogo',icon:'package'},{id:'history',name:'Historial',icon:'clock'}] as const;
 export type Run=(fn:()=>Promise<void>,success?:string)=>void;
 export default function App(){return <SafeAreaProvider><Main/></SafeAreaProvider>;}
@@ -45,25 +45,25 @@ function Main(){
  function history(selectedSale:Sale|null=null,selectedClosure:Closure|null=null,filter=''){setSale(selectedSale);setClosure(selectedClosure);setSessionFilter(filter);setHistoryVersion(n=>n+1);go('history');}
  function catalog(sub:'products'|'customers'){setCatalogTab(sub);setCatalogVersion(n=>n+1);go('catalog');}
  const logout=()=>run(async()=>{await signOut();setUser(null);setProducts([]);setCustomers([]);setPlatforms([]);setSessions([]);setSale(null);setClosure(null);setSessionFilter('');setTab('home');});
- if(boot)return <SafeAreaView style={local.root}><View style={{flex:1,alignItems:'center',justifyContent:'center',gap:18}}><Logo width={120}/><Text style={styles.h2}>Dok Pollo MC</Text><ActivityIndicator color={colors.accent}/></View></SafeAreaView>;
+ if(boot)return <SafeAreaView style={local.root}><View style={{flex:1,alignItems:'center',justifyContent:'center',gap:18}}><Logo width={120}/><Text style={styles.h2}>DOK POLLO MC</Text><ActivityIndicator color={colors.accent}/></View></SafeAreaView>;
  const errorBanner=error&&<View style={local.bannerWrap}><Banner text={error.text} detail={error.detail} onClose={()=>setError(null)}/></View>;
  if(!user)return <SafeAreaView style={local.root} edges={['top','left','right','bottom']}><StatusBar style="dark"/><ProgressBar active={busy}/>{errorBanner}
   <LoginScreen busy={busy} onSubmit={(username,password)=>run(async()=>{const u=await signIn(username,password);setUser(u);setTab('home');await refresh();})}/></SafeAreaView>;
- const brand='Dok Pollo MC',narrow=width<360,state=sync&&syncSummary(sync);
+ const brand='DOK POLLO MC',narrow=width<360,state=sync&&syncSummary(sync);
  const stateColor=state?.tone==='green'?colors.green:state?.tone==='orange'?colors.orange:colors.muted;
  // En el cobro y con el teclado abierto se oculta la navegación: más espacio para el campo activo y la acción de continuar.
  const showNav=!keyboard&&!(flow&&tab==='sale');
  return <SafeAreaView style={local.root} edges={['top','left','right','bottom']}><StatusBar style="dark"/>
   <View style={local.top}>
    <Pressable accessibilityRole="button" accessibilityLabel={`Ir a inicio${state?`. ${state.text}`:''}`} onPress={()=>go('home')} style={local.brandGroup}>
-    <Logo width={34}/>
+    <Logo width={32}/>
     {!narrow&&<View style={{flexShrink:1,minWidth:0}}>
      <Text numberOfLines={1} style={local.brandText}>{brand}</Text>
      {state&&<View testID="sync-status" accessibilityLiveRegion="polite" style={local.syncLine}><Feather name={state.icon} size={11} color={stateColor}/><Text numberOfLines={1} style={[local.syncText,{color:stateColor}]}>{state.text}</Text></View>}
     </View>}
    </Pressable>
    <Pressable testID="cash-status" accessibilityRole="button" accessibilityLabel={own?'Caja abierta, ver caja':'Caja cerrada, abrir caja'} onPress={()=>go('cash')} style={[local.cashPill,{backgroundColor:own?colors.greenSoft:colors.orangeSoft}]}>
-    <Feather name={own?'unlock':'lock'} size={13} color={own?colors.greenDark:colors.orange}/><Text numberOfLines={1} style={[local.cashText,{color:own?colors.greenDark:colors.orange}]}>{own?`Caja${own.number?' #'+own.number:''}`:'Sin caja'}</Text>
+    {width>=400&&<Feather name={own?'unlock':'lock'} size={13} color={own?colors.greenDark:colors.orange}/>}<Text numberOfLines={1} style={[local.cashText,{color:own?colors.greenDark:colors.orange}]}>{own?`Caja${own.number?' #'+own.number:''}`:'Sin caja'}</Text>
    </Pressable>
    <Pressable accessibilityRole="button" accessibilityLabel="Rutas y abonos" onPress={()=>go('operations')} style={[local.iconTap,tab==='operations'&&{backgroundColor:colors.accentSoft}]}><Feather name="credit-card" size={20} color={tab==='operations'?colors.accent:colors.ink}/></Pressable>
    <Pressable testID="profile-button" accessibilityRole="button" accessibilityLabel="Mi perfil y configuración" onPress={()=>go('settings')} style={[local.avatar,tab==='settings'&&{borderColor:colors.accent,borderWidth:2}]}>
@@ -98,21 +98,21 @@ function Toast({text}:{text:string}){
 }
 const local=StyleSheet.create({
  root:{flex:1,backgroundColor:colors.bg},
- top:{paddingHorizontal:12,paddingVertical:6,flexDirection:'row',alignItems:'center',gap:6,borderBottomColor:colors.line,borderBottomWidth:1,backgroundColor:colors.white,minHeight:56},
+ top:{paddingHorizontal:12,paddingVertical:6,flexDirection:'row',alignItems:'center',gap:6,borderBottomColor:colors.accent,borderBottomWidth:2,backgroundColor:colors.white,minHeight:56},
  brandGroup:{flex:1,flexDirection:'row',alignItems:'center',gap:8,minWidth:0,minHeight:48},
- brandText:{fontSize:15,fontWeight:'800',color:colors.ink,letterSpacing:-0.2},
+ brandText:{fontSize:14,fontWeight:'900',color:colors.accentDark,letterSpacing:0},
  syncLine:{flexDirection:'row',alignItems:'center',gap:4,marginTop:1},
  syncText:{fontSize:11,fontWeight:'600',flexShrink:1},
  syncStrip:{flexDirection:'row',alignItems:'center',gap:6,paddingHorizontal:12,paddingVertical:5,backgroundColor:colors.subtle,borderBottomWidth:1,borderBottomColor:colors.line},
  cashPill:{flexDirection:'row',alignItems:'center',gap:4,paddingHorizontal:9,minHeight:36,borderRadius:999,flexShrink:0},
  cashText:{fontSize:13,fontWeight:'700'},
  iconTap:{width:42,height:44,borderRadius:21,alignItems:'center',justifyContent:'center'},
- avatar:{width:40,height:40,borderRadius:20,backgroundColor:colors.ink,alignItems:'center',justifyContent:'center',flexShrink:0},
+ avatar:{width:40,height:40,borderRadius:20,backgroundColor:colors.accentDark,alignItems:'center',justifyContent:'center',flexShrink:0},
  avatarText:{color:'white',fontWeight:'800',fontSize:14},
  bannerWrap:{paddingHorizontal:16,paddingTop:10,width:'100%',maxWidth:720,alignSelf:'center'},
  indicator:{position:'absolute',top:0,width:28,height:3,borderBottomLeftRadius:3,borderBottomRightRadius:3,backgroundColor:'transparent'},
  navPill:{width:48,height:30,borderRadius:15,alignItems:'center',justifyContent:'center'},
- sellIcon:{width:48,height:30,borderRadius:15,backgroundColor:colors.ink,alignItems:'center',justifyContent:'center'},
+ sellIcon:{width:48,height:30,borderRadius:15,backgroundColor:colors.accent,alignItems:'center',justifyContent:'center'},
  toastWrap:{position:'absolute',left:16,right:16,top:10,alignItems:'center',zIndex:30},
  toast:{width:'100%',maxWidth:520,flexDirection:'row',alignItems:'center',gap:10,backgroundColor:colors.ink,paddingHorizontal:16,paddingVertical:13,borderRadius:12,elevation:4},
  toastText:{color:'white',fontWeight:'700',fontSize:15,flex:1},

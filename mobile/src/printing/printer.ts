@@ -25,4 +25,4 @@ export async function printText(text:string,withLogo=false){
  const logo=withLogo?await receiptLogo():'';
  const job=tail.catch(()=>{}).then(()=>module.print(config.address,text,config.codePage,config.charset,logo));tail=job;await job;
 }
-export async function testPrinter(){await printText("Dok Pollo MC\nPRUEBA DE IMPRESIÓN\nÁÉÍÓÚ áéíóú Ñ ñ\nPollo 1,5 kg\nTotal $ 36.000\nSin venta registrada\n",true);}
+export async function testPrinter(){await printText("DOK POLLO MC\nPRUEBA DE IMPRESIÓN\nÁÉÍÓÚ áéíóú Ñ ñ\nPollo 1,5 kg\nTotal $ 36.000\nSin venta registrada\n",true);}

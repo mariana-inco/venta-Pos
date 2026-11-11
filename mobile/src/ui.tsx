@@ -5,8 +5,8 @@ import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {fitSize} from './format';
 export * from './format';
 
-// Sistema visual Dok Pollo MC: fondo marfil, superficies blancas, carbón para texto y acciones,
-// morado solo como acento (foco, selección, marca). Verde, naranja y rojo quedan para estados operativos.
+// Sistema visual DOK POLLO MC: fondo marfil, superficies blancas y texto carbón. El morado de la marca
+// identifica acciones principales, foco, selección y la sección actual; el resto de la interfaz es neutra. Verde, naranja y rojo quedan para estados operativos.
 export const colors = {
   bg: '#F6F5F2', surface: '#FFFFFF', ink: '#202124', text: '#3C3F44', muted: '#5F6368', line: '#E4E2DD', lineStrong: '#CBC8C1', subtle: '#EFEDE8',
   accent: '#6D3BA6', accentDark: '#55288A', accentSoft: '#F0EAF7', accentLine: '#D9C9EC',
@@ -38,7 +38,7 @@ export function useKeyboardVisible() {
 const LOGO = require('../assets/brand/dok-pollo-mc.png');
 /** Ícono suministrado por el negocio, conservando su proporción cuadrada. */
 export function Logo({width = 44}: {width?: number}) {
-  return <Image source={LOGO} accessibilityLabel="Logo Dok Pollo MC" resizeMode="contain" style={{width, height: width}}/>;
+  return <Image source={LOGO} accessibilityLabel="Logo DOK POLLO MC" resizeMode="contain" style={{width, height: width}}/>;
 }
 
 // ── Pila de "atrás": hojas y subpantallas registran su cierre para el botón físico de Android.
@@ -70,14 +70,14 @@ export function Button({title, onPress, variant, size = 'md', icon, disabled = f
   </Pressable>;
 }
 const buttonKinds = StyleSheet.create({
-  primary: {backgroundColor: colors.ink}, secondary: {backgroundColor: colors.subtle}, danger: {backgroundColor: colors.red},
+  primary: {backgroundColor: colors.accent}, secondary: {backgroundColor: colors.subtle}, danger: {backgroundColor: colors.red},
   outline: {backgroundColor: colors.white, borderWidth: 1, borderColor: colors.lineStrong}, ghost: {backgroundColor: 'transparent', paddingHorizontal: 10},
 });
 const buttonPressed = StyleSheet.create({
-  primary: {backgroundColor: '#3A3B3F'}, secondary: {backgroundColor: '#E3E0D9'}, danger: {backgroundColor: '#8F1E18'}, outline: {backgroundColor: colors.subtle}, ghost: {backgroundColor: colors.accentSoft},
+  primary: {backgroundColor: colors.accentDark}, secondary: {backgroundColor: '#E3E0D9'}, danger: {backgroundColor: '#8F1E18'}, outline: {backgroundColor: colors.subtle}, ghost: {backgroundColor: colors.accentSoft},
 });
 export function IconButton({icon, label, onPress, tone = 'gray', size = 44, disabled, testID}: {icon: Icon; label: string; onPress: () => void; tone?: Tone | 'solid'; size?: number; disabled?: boolean; testID?: string}) {
-  const c = tone === 'solid' ? {bg: colors.ink, fg: colors.white} : toneColors[tone];
+  const c = tone === 'solid' ? {bg: colors.accent, fg: colors.white} : toneColors[tone];
   // El área táctil llega a 48 aunque el círculo visible sea menor.
   const slop = Math.max(4, Math.ceil((48 - size) / 2));
   return <Pressable testID={testID} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{disabled: !!disabled}} disabled={disabled} onPress={onPress} hitSlop={slop}

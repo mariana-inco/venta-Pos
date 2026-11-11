@@ -22,7 +22,7 @@ export function Receipt({sale, width}: {sale: Sale; width: 58 | 80}) {
   const Pair = ({left, right, bold, big}: {left: string; right: string; bold?: boolean; big?: boolean}) =>
     <View style={r.pair}><Text style={{fontSize: big ? size + 4 : size, fontWeight: bold ? '800' : '400', color: '#111'}}>{left}</Text><Text style={{flexShrink: 1, textAlign: 'right', fontSize: big ? size + 4 : size, fontWeight: '700', color: '#111', fontVariant: ['tabular-nums']}}>{right}</Text></View>;
   return <View testID="receipt-preview" accessibilityLabel={`Comprobante venta ${saleNumber(sale)}`} style={[r.paper, {width: paper}]}>
-    <Image source={PRINT_LOGO} resizeMode="contain" accessibilityLabel="Logo Dok Pollo MC" style={{width: paper * 0.48, height: paper * 0.48, alignSelf: 'center'}}/>
+    <Image source={PRINT_LOGO} resizeMode="contain" accessibilityLabel="Logo DOK POLLO MC" style={{width: paper * 0.48, height: paper * 0.48, alignSelf: 'center'}}/>
     <T bold center>{brand}</T>
     {!!s.business_nit && <T center small>NIT {s.business_nit}</T>}
     {!!place && <T center small>{place}</T>}
