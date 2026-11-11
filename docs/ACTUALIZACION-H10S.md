@@ -197,3 +197,5 @@ Verificación: TypeScript y compilación nativa correctos; etiqueta Android «Do
 - Copia de producción previa a esta actualización: `/data/backups/pos-2026-11-11T00-35-14.118Z.sqlite`.
 
 APK: `output/dok-pollo-mc-1.1.2-neotek.apk`, versionCode 4, ARM32/ARM64. Compilación nativa y firma v2 correctas, mismo certificado de 1.1.0/1.1.1. SHA-256 del APK: `8c36e903eab278023acdcde85bb7e93832679c16450b01210399cc364fa8332b`. La impresión física del nuevo raster y la instalación de este APK siguen pendientes de prueba en la terminal.
+
+Despliegue de tickets: Coolify `rc2tewptvptn5xtcrmpbquda`, commit `25a080eb2ef6329e71669c89da01d486072c030f`, completado el 10/11/2026 a las 19:37 (Bogotá). Contenedor saludable y `/health` devuelve `{"ok":true}`. Verificación posterior de SQLite: integrity_check=ok; 2 ventas y 2 clientes conservados; nombre Dok Pollo MC; contador público preparado en 3 (siguiente disponible P-03 antes de nuevas reservas/ventas). No se crearon ventas de prueba en producción.
