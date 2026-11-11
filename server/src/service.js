@@ -84,11 +84,12 @@ export function closureDetail(db,closureId) {
  if(!closure) fail(404,'Cierre no encontrado.');
  return {...closure,session_number:sessionNumber(db,closure.session_id),snapshot:JSON.parse(closure.snapshot),annotations:db.prepare('SELECT n.*,u.name AS author_name FROM closure_notes n JOIN users u ON u.id=n.author_id WHERE closure_id=? ORDER BY n.created_at').all(closureId)};
 }
-export function closeSession(db,user,sessionId,input,offline=null) {
+export function closeSession(db,user,sessionId,input,offline=null,administrative=null) {
  if(user.role!=='admin') fail(403,'Solo el administrador puede cerrar la caja.');
  return transaction(db,()=>{
   const session=sessionFor(db,user,sessionId);
-  if(session.device_id && offline?.deviceId!==session.device_id) fail(409,'Cierra esta caja desde su dispositivo de origen para incluir todas las ventas sin conexión.');
+  if(administrative&&(!administrative.devices_synced||administrative.amounts!=='recorded'||offline))fail(400,'El cierre administrativo exige confirmar la sincronización y usar los saldos revisados.');
+  if(session.device_id && offline?.deviceId!==session.device_id&&!administrative) fail(409,'Cierra esta caja desde su dispositivo de origen para incluir todas las ventas sin conexión.');
   if(session.state!=='open') fail(409,'La caja ya está cerrada. Consulta su cierre en el historial.');
   const computed=totals(db,session.id);
   if(input.reviewed_sale_count!==undefined && input.reviewed_sale_count!==computed.sale_count) fail(409,'Se registraron ventas después de revisar la caja. Cancela y vuelve a abrir la conciliación con los totales actualizados.');
@@ -101,6 +102,7 @@ export function closeSession(db,user,sessionId,input,offline=null) {
    opening_cents:session.opening_cents,...computed,expected_cash_cents:expectedCash,declared_cash_cents:declaredCash,declared_electronic_cents:declaredElectronic,
    cash_difference_cents:declaredCash-expectedCash,electronic_difference_cents:declaredElectronic-computed.electronic_cents,
    ...(offline?{ticket_number:offline.ticketNumber,device_id:offline.deviceId}:{}),
+   ...(administrative?{close_mode:'administrative_recorded_totals',origin_device_id:session.device_id,physical_count_reported:false,devices_synced_confirmed_by:user.id,administrative_request_key:administrative.request_key,administrative_reason:administrative.reason}:{}),
    total_difference_cents:declaredCash-expectedCash+declaredElectronic-computed.electronic_cents,notes:input.notes};
   db.prepare('INSERT INTO closures VALUES (?,?,?,?,?,?)').run(closureId,number,session.id,user.id,created,JSON.stringify(snapshot));
   db.prepare("UPDATE cash_sessions SET state='closed',closed_at=? WHERE id=? AND state='open'").run(created,session.id);
