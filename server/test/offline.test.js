@@ -40,6 +40,8 @@ test('Offline real: persistencia SQLite, dos dispositivos, reintentos concurrent
   const first=sell(one.store,f.seller,f.product),second=sell(two.store,f.seller,f.product);
   const receipt=ticketHtml(first.sale,'sale',58);
   assert.notEqual(first.sale.snapshot.ticket_number,second.sale.snapshot.ticket_number);
+  assert.equal(first.sale.snapshot.receipt_number,'P-01');assert.equal(second.sale.snapshot.receipt_number,'P-101');
+  assert.ok(!ticketLines(first.sale).join('\n').includes(first.sale.id));assert.ok(!ticketLines(first.sale).join('\n').includes(one.store.deviceId));
   assert.equal(one.store.request(f.seller,'/sales','POST',first.input).id,first.sale.id);
   assert.equal(one.store.pending().length,3);assert.equal(f.db.prepare('SELECT COUNT(*) n FROM sales').get().n,0);
   assert.equal(one.store.products(f.seller)[0].stock_milli,0);
@@ -128,4 +130,22 @@ test('Autorización de sincronización: catálogo emitido, permiso de dispositiv
 test('Ticket local estable y seguro para HTML/ESC-POS; 58/80 mm y nombre largo',()=>{
  const sale={id:randomUUID(),number:1,created_at:'2026-10-28T15:00:00.000Z',total_cents:3600000,snapshot:{business_name:'DANNY\'S <script>\x1b@',seller_name:'Ana',customer_name:'Ñandú',customer_city:'Bogotá',ticket_number:`${randomUUID()}/1`},items:[{name:'Queso campesino de nombre muy largo',quantity_milli:1500,price_cents:2400000,subtotal_cents:3600000,unit:'kg'}],payments:[{method:'cash'}]};
  for(const width of [58,80]){const lines=ticketLines(sale,'sale',width);assert.ok(lines.every(l=>l.length<=(width===58?32:48)));assert.ok(!lines.join('').includes('\x1b'));const html=ticketHtml(sale,'sale',width);assert.ok(html.includes('&lt;script&gt;'));assert.ok(!html.includes('<script>'));assert.ok(lines.join('\n').includes('36.000'));}
+});
+
+test('Consecutivo offline: solo las ventas consumen números, persiste, no se repite y se bloquea al agotar reserva',async()=>{
+ const f=await fixture(),l=local();
+ try{
+  f.prepare(l.store);const first=sell(l.store,f.seller,f.product,'0.25');
+  assert.equal(first.sale.snapshot.receipt_number,'P-01');
+  const input={...first.input,request_key:randomUUID()};
+  const second=l.store.request(f.seller,'/sales','POST',input);
+  assert.equal(second.snapshot.receipt_number,'P-02');
+  assert.equal(l.store.request(f.seller,'/sales','POST',input).snapshot.receipt_number,'P-02');
+  for(const row of l.store.pending()){const result=ingestEvent(f.db,f.seller,l.store.deviceId,row.event);l.store.acknowledge(row.id,result);}
+  assert.equal(l.store.get('sale',second.id).snapshot.receipt_number,'P-02');
+  assert.equal(JSON.parse(f.db.prepare('SELECT snapshot FROM sales WHERE id=?').get(second.id).snapshot).receipt_number,'P-02');
+  const before=l.store.pending().length;l.store.setMeta('receipt_sequence',100);
+  assert.throws(()=>l.store.request(f.seller,'/sales','POST',{...input,request_key:randomUUID()}),/reservar más/);
+  assert.equal(l.store.pending().length,before);
+ }finally{l.db.close();f.db.close();}
 });

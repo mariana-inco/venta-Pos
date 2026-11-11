@@ -1,3 +1,4 @@
+export {saleNumber} from './printing/number.js';
 // Formato y lectura de valores en convenciones colombianas. Sin aritmética de punto flotante:
 // cantidades en milésimas y dinero en centavos, igual que la API (server/src/money.js).
 const TZ = 'America/Bogota';

@@ -46,7 +46,7 @@ export async function documentAction(path:string,width:58|80,action:'share'|'pri
   if(action!=='print'||!window.open(uri,'_blank')){const a=document.createElement('a');a.href=uri;a.download=name;a.click();}
   setTimeout(()=>URL.revokeObjectURL(uri),60000);return;
  }
- if(action==='print'&&await printerConfig()){const record=await api<any>(path);const config=await printerConfig();await printText(ticketLines(record,path.startsWith('/sales/')?'sale':'closure',config!.width).join('\n')+'\n');return;}
+ if(action==='print'&&await printerConfig()){const record=await api<any>(path);const config=await printerConfig();await printText(ticketLines(record,path.startsWith('/sales/')?'sale':'closure',config!.width).join('\n')+'\n',true);return;}
  const result=await FileSystem.downloadAsync(url,FileSystem.cacheDirectory+name,{headers:{Authorization:`Bearer ${token}`}});
  if(result.status!==200)throw new ApiError('No se pudo descargar el comprobante. Revisa la conexión e inténtalo nuevamente.',result.status,`HTTP ${result.status} · GET ${path}/pdf`);
  if(action==='print')await Print.printAsync({uri:result.uri});

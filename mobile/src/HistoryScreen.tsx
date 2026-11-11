@@ -3,7 +3,7 @@ import {Pressable, Text, View} from 'react-native';
 import {Feather} from '@expo/vector-icons';
 import {api, documentAction} from './api';
 import {Receipt} from './Receipt';
-import {Badge, Banner, Button, Card, Choice, Divider, Empty, Field, FooterBar, Header, IconButton, InfoRow, Loading, Page, SearchBar, Section, Segmented, Sheet, bogotaDay, colors, cop, date, dayLabel, diff, isIsoDate, normalizeSearch, quantityLabel, receiptNumber, shortDate, signed, styles, time, useBack} from './ui';
+import {Badge, Banner, Button, Card, Choice, Divider, Empty, Field, FooterBar, Header, IconButton, InfoRow, Loading, Page, SearchBar, Section, Segmented, Sheet, bogotaDay, colors, cop, date, dayLabel, diff, isIsoDate, normalizeSearch, quantityLabel, receiptNumber, saleNumber, shortDate, signed, styles, time, useBack} from './ui';
 import type {Sale, Closure, SalesPage, Settings, User, Customer, CashSession} from './types';
 import type {Run} from '../App';
 type Props = {user: User; settings: Settings; run: Run; busy: boolean; initialSale: Sale | null; initialClosure: Closure | null; sessionFilter: string; clearInitial: () => void; customers: Customer[]; sessions: CashSession[]};
@@ -68,7 +68,7 @@ export function HistoryScreen({user, settings, run, busy, initialSale, initialCl
   // ── Detalle de venta
   if (sale) return <Page testID="sale-detail">
     <BackLink text="Historial"/>
-    <Header eyebrow="VENTA REGISTRADA" title={`Venta ${(sale.snapshot.ticket_number || receiptNumber(sale.number))}`} subtitle={date(sale.created_at)} right={<Badge text="Guardada" icon="check"/>}/>
+    <Header eyebrow="VENTA REGISTRADA" title={`Venta ${saleNumber(sale)}`} subtitle={date(sale.created_at)} right={<Badge text="Guardada" icon="check"/>}/>
     <Card>
       <InfoRow label="Cliente" value={sale.snapshot.customer_name} strong/>
       <InfoRow label="Ciudad" value={sale.snapshot.customer_city}/>
@@ -184,10 +184,10 @@ export function HistoryScreen({user, settings, run, busy, initialSale, initialCl
       {page && list.length === 0 && <Empty icon="calendar" title={period === 'today' ? 'Sin ventas hoy' : 'Sin ventas en este filtro'} text={period === 'today' ? 'Las ventas confirmadas hoy aparecerán aquí.' : 'Prueba otro periodo o quita filtros.'} action={period !== 'all' || activeChips.length ? 'Ver todas las ventas' : undefined} onAction={() => { setPeriod('all'); setMethod(''); setCustomer(''); setSeller(''); setActiveSession(''); }}/>}
       {sections.map(section => <Section key={section.day} title={section.day.charAt(0).toUpperCase() + section.day.slice(1)}>
         <View style={{backgroundColor: colors.white, borderRadius: 16, borderWidth: 1, borderColor: colors.line, overflow: 'hidden'}}>
-          {section.items.map((s, i) => <Pressable key={s.id} testID={`sale-row-${s.number}`} accessibilityRole="button" accessibilityLabel={`Venta ${receiptNumber(s.number)}, ${s.snapshot.customer_name}, ${cop(s.total_cents)}`} onPress={() => run(async () => { setSale(await api<Sale>(`/sales/${s.id}`)); setReceipt(false); })}
+          {section.items.map((s, i) => <Pressable key={s.id} testID={`sale-row-${s.number}`} accessibilityRole="button" accessibilityLabel={`Venta ${saleNumber(s)}, ${s.snapshot.customer_name}, ${cop(s.total_cents)}`} onPress={() => run(async () => { setSale(await api<Sale>(`/sales/${s.id}`)); setReceipt(false); })}
             style={({pressed}) => [{flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14, minHeight: 64}, i > 0 && {borderTopWidth: 1, borderTopColor: colors.line}, pressed && {backgroundColor: colors.greenSoft}]}>
             <View style={{flex: 1, gap: 2}}>
-              <Text style={{fontSize: 15, fontWeight: '800', color: colors.ink}}>Venta {receiptNumber(s.number)}</Text>
+              <Text style={{fontSize: 15, fontWeight: '800', color: colors.ink}}>Venta {saleNumber(s)}</Text>
               <Text numberOfLines={1} style={styles.small}>{time(s.created_at)} · {s.snapshot.customer_name}{admin ? ` · ${s.snapshot.seller_name}` : ''}</Text>
             </View>
             <View style={{alignItems: 'flex-end', gap: 4}}><Text style={[styles.money, {fontSize: 15}]}>{cop(s.total_cents)}</Text>{s.state==='ANULADA'&&<Badge text="ANULADA" tone="orange"/>}<Badge text={methodName(s)} tone={s.method === 'cash' ? 'green' : 'gray'}/></View>

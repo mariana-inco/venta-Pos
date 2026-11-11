@@ -3,7 +3,7 @@ import {Platform, Pressable, Text, View, TextInput, Switch} from 'react-native';
 import {Feather} from '@expo/vector-icons';
 import * as Crypto from 'expo-crypto';
 import {api, ApiError, documentAction, readPending, savePending} from './api';
-import {Badge, Banner, Button, Card, Choice, Empty, Field, FooterBar, IconButton, Loading, Page, SearchBar, Segmented, Sheet, Stepper, colors, cop, fitSize, lineSubtotal, moneyToCents, normalizeSearch, parseQuantity, quantityForApi, quantityLabel, quantityText, receiptNumber, styles, unitLabel, useBack} from './ui';
+import {Badge, Banner, Button, Card, Choice, Empty, Field, FooterBar, IconButton, Loading, Page, SearchBar, Segmented, Sheet, Stepper, colors, cop, fitSize, lineSubtotal, moneyToCents, normalizeSearch, parseQuantity, quantityForApi, quantityLabel, quantityText, receiptNumber, saleNumber, styles, unitLabel, useBack} from './ui';
 import type {CashSession, Product, Customer, Platform as PayPlatform, CartLine, Sale} from './types';
 import {enableScanner,onBarcode} from './scanner';
 import type {Run} from '../App';
@@ -113,7 +113,7 @@ export function SaleScreen({route,userId, active, session, products, customers, 
       <View style={{alignItems: 'center', gap: 8, paddingTop: 12}}>
         <View style={{width: 76, height: 76, borderRadius: 38, backgroundColor: colors.green, alignItems: 'center', justifyContent: 'center'}}><Feather name="check" size={40} color="white"/></View>
         <Text style={styles.title}>¡Venta registrada!</Text>
-        <Text style={styles.muted}>Venta {receiptNumber(sale.number)} · {sale.snapshot.customer_name}</Text>
+        <Text style={styles.muted}>Venta {saleNumber(sale)} · {sale.snapshot.customer_name}</Text>
       </View>
       <Card style={{alignItems: 'center', gap: 4}}>
         <Text style={styles.small}>Total de la factura</Text>

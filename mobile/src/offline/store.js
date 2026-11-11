@@ -46,7 +46,7 @@ export class LocalStore {
  acknowledge(id,result){this.tx(()=>{
   const sale=this.get('sale',id);if(sale&&result.total_cents!==sale.total_cents)fail('El importe confirmado no coincide con el ticket local. Conserva la operación para revisión.');
   this.db.run("UPDATE local_events SET state='sent',error=NULL,result=? WHERE id=?",JSON.stringify(result),id);
-  for(const kind of ['sale','closure','session']){const r=this.get(kind,id);if(r)this.put(kind,{...r,sync_status:'synced',cloud_number:result.cloud_number,sync_warnings:result.warnings||[]});}
+  for(const kind of ['sale','closure','session']){const r=this.get(kind,id);if(r)this.put(kind,{...r,sync_status:'synced',cloud_number:result.cloud_number,sync_warnings:result.warnings||[],...(result.receipt_number?{snapshot:{...r.snapshot,receipt_number:result.receipt_number}}:{})});}
  });}
  block(id,error){this.db.run("UPDATE local_events SET state='blocked',error=? WHERE id=?",error,id);}
  status(){const pending=this.pending();return {device_id:this.deviceId,pending:pending.length,blocked:pending.filter(e=>e.state==='blocked').length,error:pending.find(e=>e.error)?.error||null,last_sync:this.meta('last_sync'),catalog_ready:!!this.catalog};}
@@ -132,8 +132,13 @@ export class LocalStore {
    return {id:this.uuid(),product_id:p.id,name:p.name,unit:p.unit,price_cents:p.price_cents,quantity_milli:qty,subtotal_cents:total};
   });
   const total=items.reduce((n,i)=>n+i.subtotal_cents,0);if(total>LIMIT)fail('Total fuera de rango.');
-  const e=this.enqueue(user,'sale.create',{session_id:session.id,customer_id:customer.id,catalog_version:catalog.version,customer_name:customer.name,customer_city:customer.city,items:items.map(i=>({product_id:i.product_id,quantity_milli:i.quantity_milli})),method:input.method,platform_id:platform?.id||null},input.request_key);
-  const snapshot={...catalog.settings,customer_name:customer.name,customer_city:customer.city,seller_name:user.name,device_id:this.deviceId,ticket_number:`${this.deviceId}/${e.sequence}`,catalog_version:catalog.version};
+  const used=this.meta('receipt_sequence')||0;
+  const range=(catalog.receipt_ranges||[]).find(r=>r.end_number>used);
+  if(!range)fail('Conecta la terminal para reservar más consecutivos de venta. Si el servidor es antiguo, actualízalo primero.');
+  const receiptSequence=Math.max(used+1,range.start_number);
+  this.setMeta('receipt_sequence',receiptSequence);
+  const e=this.enqueue(user,'sale.create',{receipt_sequence:receiptSequence,session_id:session.id,customer_id:customer.id,catalog_version:catalog.version,customer_name:customer.name,customer_city:customer.city,items:items.map(i=>({product_id:i.product_id,quantity_milli:i.quantity_milli})),method:input.method,platform_id:platform?.id||null},input.request_key);
+  const snapshot={...catalog.settings,receipt_number:`P-${String(receiptSequence).padStart(2,'0')}`,customer_name:customer.name,customer_city:customer.city,seller_name:user.name,device_id:this.deviceId,ticket_number:`${this.deviceId}/${e.sequence}`,catalog_version:catalog.version};
   return this.put('sale',{id:e.id,number:e.sequence,session_id:session.id,session_number:session.number,seller_id:user.id,customer_id:customer.id,created_at:e.created_at,total_cents:total,items,payments:[{method:input.method,platform_id:platform?.id||null,platform_name:platform?.name||null,amount_cents:total}],method:input.method,platform_name:platform?.name||null,snapshot,sync_status:'pending',local_request:canonical(input)});
  }
  close(user,id,input){

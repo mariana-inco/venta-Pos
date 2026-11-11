@@ -1,10 +1,11 @@
+import {businessName} from './printing/number';
 import React from 'react';
 import {Image, StyleSheet, Text, View} from 'react-native';
-import {cop, quantityLabel, receiptNumber, shortDate, time} from './format';
+import {cop, quantityLabel, receiptNumber, saleNumber, shortDate, time} from './format';
 import type {Sale} from './types';
 
-// Misma versión monocromática que imprime la API (server/assets/dannys-logo-print.png): lo que se ve es lo que sale en papel.
-const PRINT_LOGO = require('../assets/brand/dannys-logo-print.png');
+// Logo de Dok Pollo MC; el controlador térmico lo convierte a blanco y negro.
+const PRINT_LOGO = require('../assets/brand/dok-pollo-mc.png');
 
 /**
  * Vista previa del ticket térmico. Usa solo los datos guardados de la venta (instantánea, precios y subtotales
@@ -15,20 +16,20 @@ export function Receipt({sale, width}: {sale: Sale; width: 58 | 80}) {
   const paper = width === 58 ? 248 : 330;
   const size = width === 58 ? 11.5 : 13;
   const place = [s.business_address, s.business_city].filter(Boolean).join(' · ');
-  const brand = /DANNY/i.test(s.business_name) ? "DANNY'S" : s.business_name;
+  const brand = businessName(s.business_name);
   const T = ({children, bold, center, big, small}: {children: React.ReactNode; bold?: boolean; center?: boolean; big?: boolean; small?: boolean}) =>
     <Text style={{fontSize: big ? size + 6 : small ? size - 2 : size, fontWeight: bold ? '700' : '400', textAlign: center ? 'center' : 'left', color: '#111', lineHeight: (big ? size + 6 : small ? size - 2 : size) * 1.35}}>{children}</Text>;
   const Pair = ({left, right, bold, big}: {left: string; right: string; bold?: boolean; big?: boolean}) =>
     <View style={r.pair}><Text style={{fontSize: big ? size + 4 : size, fontWeight: bold ? '800' : '400', color: '#111'}}>{left}</Text><Text style={{flexShrink: 1, textAlign: 'right', fontSize: big ? size + 4 : size, fontWeight: '700', color: '#111', fontVariant: ['tabular-nums']}}>{right}</Text></View>;
-  return <View testID="receipt-preview" accessibilityLabel={`Comprobante venta ${(sale.snapshot.ticket_number || receiptNumber(sale.number))}`} style={[r.paper, {width: paper}]}>
-    <Image source={PRINT_LOGO} resizeMode="contain" accessibilityLabel="Logo Danny's" style={{width: paper * 0.48, height: paper * 0.48 * 400 / 469, alignSelf: 'center'}}/>
-    <T bold center>{s.business_name}</T>
+  return <View testID="receipt-preview" accessibilityLabel={`Comprobante venta ${saleNumber(sale)}`} style={[r.paper, {width: paper}]}>
+    <Image source={PRINT_LOGO} resizeMode="contain" accessibilityLabel="Logo Dok Pollo MC" style={{width: paper * 0.48, height: paper * 0.48, alignSelf: 'center'}}/>
+    <T bold center>{brand}</T>
     {!!s.business_nit && <T center small>NIT {s.business_nit}</T>}
     {!!place && <T center small>{place}</T>}
     {!!s.business_phone && <T center small>Tel. {s.business_phone}</T>}
     <View style={r.solid}/>
     <T center small bold>COMPROBANTE DE VENTA</T>
-    <T center big bold>Venta {(sale.snapshot.ticket_number || receiptNumber(sale.number))}</T>
+    <T center big bold>Venta {saleNumber(sale)}</T>
     <View style={r.solid}/>
     <Pair left="Fecha" right={shortDate(sale.created_at)}/>
     <Pair left="Hora" right={time(sale.created_at)}/>

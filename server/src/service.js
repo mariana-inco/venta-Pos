@@ -1,3 +1,4 @@
+import {claimReceipt} from './receipt-numbers.js';
 import {routeFor,consumeRoute,balance} from './commerce.js';
 import { id, now, audit, transaction } from './db.js';
 import { money, quantity, subtotal } from './money.js';
@@ -65,7 +66,7 @@ export function recordSale(db,user,input) {
   const number=db.prepare('SELECT COALESCE(MAX(number),0)+1 AS n FROM sales').get().n;
   const settings=db.prepare('SELECT * FROM settings WHERE id=1').get();
   // Los datos del negocio quedan congelados en la venta: el comprobante histórico no cambia si se editan después.
-  const snapshot={business_name:settings.business_name,business_nit:settings.business_nit,business_address:settings.business_address,business_phone:settings.business_phone,business_city:settings.business_city,customer_name:customer.name,customer_city:customer.city,seller_name:user.name,route_name:route?.name||null,route_id:route?.id||null,credit:!!input.credit,initial_paid_cents:paid,initial_balance_cents:total-paid,cash_received_cents:received,cash_change_cents:received===null?null:received-total};
+  const snapshot={receipt_number:claimReceipt(db,saleId),business_name:settings.business_name,business_nit:settings.business_nit,business_address:settings.business_address,business_phone:settings.business_phone,business_city:settings.business_city,customer_name:customer.name,customer_city:customer.city,seller_name:user.name,route_name:route?.name||null,route_id:route?.id||null,credit:!!input.credit,initial_paid_cents:paid,initial_balance_cents:total-paid,cash_received_cents:received,cash_change_cents:received===null?null:received-total};
   db.prepare('INSERT INTO sales VALUES (?,?,?,?,?,?,?,?,?,?)').run(saleId,number,session.id,user.id,customer.id,created,total,JSON.stringify(snapshot),input.request_key,requestHash);
   db.prepare('INSERT INTO sale_terms VALUES (?,?,?,?)').run(saleId,route?.id||null,Number(!!input.credit),paid);
   if(route)consumeRoute(db,user,route,items,saleId);

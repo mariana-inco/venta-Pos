@@ -1,3 +1,4 @@
+import {reserveReceipts,claimReceipt} from './receipt-numbers.js';
 import {routeFor,productsFor} from './commerce.js';
 import {randomBytes} from 'node:crypto';
 import {z} from 'zod';
@@ -13,7 +14,7 @@ const base={id:uuid,sequence:z.number().int().positive().max(Number.MAX_SAFE_INT
 export const eventSchema=z.discriminatedUnion('type',[
  z.object({...base,type:z.literal('customer.create'),data:z.object({name:text(),city:text(100)})}),
  z.object({...base,type:z.literal('cash.open'),data:z.object({opening_cents:amount})}),
- z.object({...base,type:z.literal('sale.create'),data:z.object({session_id:uuid,customer_id:uuid,catalog_version:z.string().length(64),customer_name:text(),customer_city:text(100),items:z.array(z.object({product_id:uuid,quantity_milli:amount.refine(n=>n>0)})).min(1).max(100),method:z.enum(['cash','electronic']),platform_id:z.string().max(80).nullable()})}),
+ z.object({...base,type:z.literal('sale.create'),data:z.object({receipt_sequence:z.number().int().positive().optional(),session_id:uuid,customer_id:uuid,catalog_version:z.string().length(64),customer_name:text(),customer_city:text(100),items:z.array(z.object({product_id:uuid,quantity_milli:amount.refine(n=>n>0)})).min(1).max(100),method:z.enum(['cash','electronic']),platform_id:z.string().max(80).nullable()})}),
  z.object({...base,type:z.literal('cash.close'),data:z.object({session_id:uuid,declared_cash_cents:amount,declared_electronic_cents:amount,reviewed_sale_count:z.number().int().nonnegative(),notes:z.string().max(2000)})}),
  z.object({...base,type:z.literal('closure.note'),data:z.object({closure_id:uuid,note:text(2000)})})
 ]);
@@ -43,7 +44,7 @@ export function catalogFor(db,user,deviceId){
   db.prepare('INSERT OR IGNORE INTO catalog_versions VALUES (?,?,?)').run(version,serialized,now());
   db.prepare('INSERT OR IGNORE INTO device_catalogs VALUES (?,?)').run(deviceId,version);
   db.prepare('UPDATE sync_devices SET last_seen_at=? WHERE id=?').run(now(),deviceId);
-  return {...payload,version,user,customers:db.prepare('SELECT * FROM customers ORDER BY name').all().filter(c=>user.role==='admin'||!routeFor(db,user)||db.prepare('SELECT 1 FROM customer_routes WHERE customer_id=? AND route_id=?').get(c.id,routeFor(db,user).id)),ack_sequence:db.prepare('SELECT last_sequence FROM sync_devices WHERE id=?').get(deviceId).last_sequence,server_time:now()};
+  return {...payload,receipt_ranges:reserveReceipts(db,deviceId),version,user,customers:db.prepare('SELECT * FROM customers ORDER BY name').all().filter(c=>user.role==='admin'||!routeFor(db,user)||db.prepare('SELECT 1 FROM customer_routes WHERE customer_id=? AND route_id=?').get(c.id,routeFor(db,user).id)),ack_sequence:db.prepare('SELECT last_sequence FROM sync_devices WHERE id=?').get(deviceId).last_sequence,server_time:now()};
  });
 }
 export function ingestEvent(db,user,deviceId,raw){
@@ -109,7 +110,7 @@ function applyEvent(db,user,deviceId,event){
  });
  const total=items.reduce((n,i)=>n+i.subtotal_cents,0);
  if(!Number.isSafeInteger(total)||total>100_000_000_000)fail(400,'Total fuera de rango.');
- const snapshot={...catalog.settings,customer_name:d.customer_name,customer_city:d.customer_city,seller_name:user.name,ticket_number:ticketNumber(deviceId,event.sequence),device_id:deviceId,catalog_version:d.catalog_version};
+ const snapshot={...catalog.settings,receipt_number:claimReceipt(db,event.id,deviceId,d.receipt_sequence??null),customer_name:d.customer_name,customer_city:d.customer_city,seller_name:user.name,ticket_number:ticketNumber(deviceId,event.sequence),device_id:deviceId,catalog_version:d.catalog_version};
  const number=db.prepare('SELECT COALESCE(MAX(number),0)+1 AS n FROM sales').get().n;
  db.prepare('INSERT INTO sales VALUES (?,?,?,?,?,?,?,?,?,?)').run(event.id,number,session.id,user.id,d.customer_id,event.created_at,total,JSON.stringify(snapshot),event.id,digest(canonical(event)));
  const warnings=[];
@@ -129,7 +130,7 @@ function applyEvent(db,user,deviceId,event){
  db.prepare('INSERT INTO offline_sales VALUES (?,?,?,?,?)').run(event.id,deviceId,event.sequence,d.catalog_version,snapshot.ticket_number);
  for(const warning of warnings)db.prepare('INSERT INTO sync_issues VALUES (?,?,?,?,?)').run(id(),deviceId,event.id,JSON.stringify(warning),now());
  audit(db,user.id,'sale.create',event.id,{device_id:deviceId,total_cents:total});
- return {id:event.id,cloud_number:number,total_cents:total,warnings};
+ return {id:event.id,cloud_number:number,receipt_number:snapshot.receipt_number,total_cents:total,warnings};
 }
 export function mountSync(app,db){
  const auth=authenticateDevice(db);
