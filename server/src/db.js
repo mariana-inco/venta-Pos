@@ -10,7 +10,7 @@ export function openDatabase(path = process.env.DATABASE_PATH || './data/pos.sql
  const db = new DatabaseSync(path);
  db.exec(readFileSync(new URL('./schema.sql', import.meta.url), 'utf8'));
  migrate(db);
- for (const table of ['sales','sale_items','payments','closures','closure_notes','audit','documents','sync_events','offline_sales','catalog_versions','sync_issues','stock_movements','sale_terms','sale_voids','collections','collection_allocations','collection_reversals','sale_stock_effects','receipt_numbers','receipt_ranges','sale_agents','delivery_batches','delivery_items','daily_closures','sale_drafts','payment_references']) {
+ for (const table of ['sales','sale_items','payments','closures','closure_notes','audit','documents','sync_events','offline_sales','catalog_versions','sync_issues','stock_movements','sale_terms','sale_voids','collections','collection_allocations','collection_reversals','sale_stock_effects','receipt_numbers','receipt_ranges','sale_agents','delivery_batches','delivery_items','daily_closures','sale_drafts','payment_references','route_reopenings','cash_expenses']) {
   for (const operation of ['UPDATE','DELETE']) db.exec(`CREATE TRIGGER IF NOT EXISTS ${table}_no_${operation} BEFORE ${operation} ON ${table} BEGIN SELECT RAISE(ABORT,'Registro inmutable'); END;`);
  }
  return db;
@@ -30,6 +30,18 @@ function migrate(db) {
  migrateReceiptNumbers(db);
  db.exec(readFileSync(new URL('./business-schema.sql', import.meta.url), 'utf8'));
  db.exec(readFileSync(new URL('./route-payments-schema.sql', import.meta.url), 'utf8'));
+ // Remove only the old per-day uniqueness: multiple immutable close/reopen cycles are now allowed.
+ const closureSql=db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='daily_closures'").get().sql;
+ if(/UNIQUE\s*\(\s*route_id\s*,\s*day\s*\)/i.test(closureSql))transaction(db,()=>{
+  const triggers=db.prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND tbl_name='daily_closures'").all();
+  db.exec(`CREATE TABLE daily_closures_cycles(id TEXT PRIMARY KEY,route_id TEXT NOT NULL REFERENCES routes(id),day TEXT NOT NULL,actor_id TEXT NOT NULL REFERENCES users(id),created_at TEXT NOT NULL,snapshot TEXT NOT NULL);
+   INSERT INTO daily_closures_cycles SELECT * FROM daily_closures ORDER BY rowid;
+   DROP TABLE daily_closures;
+   ALTER TABLE daily_closures_cycles RENAME TO daily_closures;`);
+  for(const t of triggers)db.exec(t.sql);
+ });
+ db.exec(readFileSync(new URL('./cash-route-schema.sql', import.meta.url), 'utf8'));
+
  // Import only real references already saved in legacy sale snapshots; never invent missing values.
  const legacyReferences=db.prepare("SELECT p.id payment_id,p.platform_id,json_extract(s.snapshot,'$.payment_reference') reference,s.created_at FROM payments p JOIN sales s ON s.id=p.sale_id WHERE p.method='electronic' AND p.platform_id IS NOT NULL AND length(trim(COALESCE(json_extract(s.snapshot,'$.payment_reference'),'')))>0").all();
  for(const r of legacyReferences)db.prepare('INSERT OR IGNORE INTO payment_references VALUES (?,?,?,?,?,?,?)').run('legacy-'+r.payment_id,r.platform_id,String(r.reference).trim(),String(r.reference).normalize('NFKC').replace(/\s/g,'').toUpperCase(),r.payment_id,null,r.created_at);

@@ -1,4 +1,5 @@
-import {replaceDelivery,closeRoute} from './route-operations.js';
+import {activeRouteClosure} from './route-state.js';
+import {replaceDelivery,closeRoute,reopenRoute} from './route-operations.js';
 import {paymentsFor} from './payments.js';
 import {z} from 'zod';
 import {id,now,transaction,audit} from './db.js';
@@ -18,7 +19,7 @@ export const typeFor=(db,id)=>db.prepare('SELECT customer_type FROM customer_pro
 export const priced=(db,p,type)=>{if(type!=='wholesale')return p.price_cents;const value=db.prepare('SELECT wholesale_price_cents n FROM product_pricing WHERE product_id=?').get(p.id)?.n;if(!value)fail(409,`Configura el precio mayorista de ${p.name}.`);return value;};
 export function requireOpenRoute(db,route,at=now()){
  if(!route)fail(409,'El administrador debe asignar una ruta al usuario antes de operar.');
- if(db.prepare('SELECT 1 FROM daily_closures WHERE route_id=? AND day=?').get(route.id,dayOf(at)))fail(409,'La ruta ya tiene cierre de este día. Opera en la siguiente jornada.');
+ if(activeRouteClosure(db,route.id,dayOf(at)))fail(409,'La ruta ya tiene cierre de este día. Opera en la siguiente jornada.');
 }
 export function agentsFor(db,user){return db.prepare(`SELECT * FROM sales_agents WHERE user_id=? AND active=1 ORDER BY name`).all(user.id);}
 export function customerView(db,c){const routes=db.prepare('SELECT r.id,r.name,r.active FROM routes r JOIN customer_routes cr ON cr.route_id=r.id WHERE cr.customer_id=? ORDER BY r.name').all(c.id);return {...c,customer_type:typeFor(db,c.id),route_id:routes.length===1?routes[0].id:null,routes};}
@@ -35,7 +36,7 @@ export function inventoryReport(db,routeId,from,to){
 export function results(db,{route_id,user_id,from,to,session_id}={}){
  const p=period(from,to);
  const sales=db.prepare('SELECT s.*,t.credit,t.route_id,a.agent_id FROM sales s LEFT JOIN sale_terms t ON t.sale_id=s.id LEFT JOIN sale_agents a ON a.sale_id=s.id WHERE NOT EXISTS(SELECT 1 FROM sale_voids v WHERE v.sale_id=s.id) ORDER BY s.created_at').all().filter(s=>(!route_id||s.route_id===route_id)&&(!user_id||s.seller_id===user_id)&&(!session_id||s.session_id===session_id)&&(!p.start||s.created_at>=p.start)&&s.created_at<p.end);
- const collections=db.prepare('SELECT c.*,u.name user_name,pr.reference FROM collections c JOIN users u ON u.id=c.seller_id LEFT JOIN payment_references pr ON pr.collection_id=c.id WHERE NOT EXISTS(SELECT 1 FROM collection_reversals r WHERE r.collection_id=c.id) ORDER BY c.created_at').all().filter(c=>(!route_id||c.route_id===route_id)&&(!user_id||c.seller_id===user_id)&&(!session_id||c.session_id===session_id)&&(!p.start||c.created_at>=p.start)&&c.created_at<p.end);
+ const collections=db.prepare('SELECT c.*,u.name user_name,cu.name customer_name,pr.reference FROM collections c JOIN users u ON u.id=c.seller_id JOIN customers cu ON cu.id=c.customer_id LEFT JOIN payment_references pr ON pr.collection_id=c.id WHERE NOT EXISTS(SELECT 1 FROM collection_reversals r WHERE r.collection_id=c.id) ORDER BY c.created_at').all().filter(c=>(!route_id||c.route_id===route_id)&&(!user_id||c.seller_id===user_id)&&(!session_id||c.session_id===session_id)&&(!p.start||c.created_at>=p.start)&&c.created_at<p.end);
  const summary=rows=>{
   const keys=new Set(rows.map(s=>s.id));const payments=db.prepare('SELECT * FROM payments').all().filter(r=>keys.has(r.sale_id));
   const sum=(arr,key)=>arr.reduce((n,r)=>n+r[key],0);
@@ -77,8 +78,9 @@ export function mountBusiness(app,db){
  app.get('/api/accounts/:id/statement',(req,res)=>res.json(statement(db,req.user,req.params.id,req.query.from,req.query.to)));
  app.get('/api/accounts/:id/statement/pdf',async(req,res)=>res.type('pdf').set('Content-Disposition','attachment; filename="estado-de-cuenta.pdf"').send(await statementPdf(statement(db,req.user,req.params.id,req.query.from,req.query.to))));
  app.get('/api/results',admin,(req,res)=>res.json(results(db,req.query)));
- app.get('/api/daily-closures',admin,(req,res)=>res.json(db.prepare('SELECT * FROM daily_closures ORDER BY day DESC,created_at DESC').all().filter(c=>!req.query.route_id||c.route_id===req.query.route_id).map(c=>({...c,snapshot:JSON.parse(c.snapshot)}))));
- app.get('/api/route/closure',(req,res)=>{const route=routeFor(db,req.user);const c=route?db.prepare('SELECT * FROM daily_closures WHERE route_id=? AND day=?').get(route.id,dayOf(now())):null;res.json({route,closure:c?{...c,snapshot:JSON.parse(c.snapshot)}:null});});
+ app.get('/api/daily-closures',admin,(req,res)=>res.json(db.prepare('SELECT c.*,r.created_at reopened_at,u.name reopened_by FROM daily_closures c LEFT JOIN route_reopenings r ON r.closure_id=c.id LEFT JOIN users u ON u.id=r.actor_id ORDER BY c.day DESC,c.created_at DESC').all().filter(c=>!req.query.route_id||c.route_id===req.query.route_id).map(c=>({...c,snapshot:JSON.parse(c.snapshot)}))));
+ app.get('/api/route/closure',(req,res)=>{const route=routeFor(db,req.user);const c=route?activeRouteClosure(db,route.id,dayOf(now())):null;res.json({route,closure:c?{...c,snapshot:JSON.parse(c.snapshot)}:null});});
+ app.post('/api/route/open',admin,validate(z.object({closure_id:uuid,request_key:uuid}).strict()),(req,res)=>res.json(reopenRoute(db,req.user,req.input)));
  app.post('/api/route/close',validate(z.object({route_id:uuid.optional()}).strict()),(req,res)=>{if(req.input.route_id&&req.input.route_id!==routeFor(db,req.user)?.id)fail(403,'No puedes cerrar una ruta ajena.');res.json(closeRoute(db,req.user));});
  app.post('/api/daily-closures',admin,validate(z.object({route_id:uuid,day:z.iso.date()})),(req,res)=>{if(req.input.route_id!==routeFor(db,req.user)?.id)fail(403,'Solo puedes cerrar tu ruta asignada.');if(req.input.day!==dayOf(now()))fail(400,'Solo puedes cerrar la jornada actual.');res.json(closeRoute(db,req.user));});
 }

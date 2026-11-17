@@ -13,7 +13,8 @@ type Props = {user: User; route: {id: string; name: string} | null; go: (tab: Ta
 export function MenuScreen({user, route, go, onCatalog}: Props) {
   const admin = user.role === 'admin';
   const groups: {title: string; items: Item[]}[] = [
-    {title: 'Cobros', items: [
+    {title: 'Cobros y gastos', items: [
+      {id: 'expenses', icon: 'minus-circle', title: 'Gastos', subtitle: 'Registrar y consultar gastos en efectivo por caja', onPress: () => go('expenses')},
       {id: 'operations', icon: 'credit-card', title: 'Cuentas por cobrar', subtitle: 'Clientes con deuda, abonos y estados de cuenta', onPress: () => go('operations')},
     ]},
     {title: admin ? 'Rutas e inventario' : route ? `Mi ruta · ${route.name}` : 'Mi ruta', items: [

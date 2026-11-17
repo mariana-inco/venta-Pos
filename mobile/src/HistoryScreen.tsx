@@ -1,3 +1,4 @@
+import {CashMovements} from './CashMovements';
 import {FinancialSummary,InventorySummary} from './ResultsScreen';
 import React, {useEffect, useMemo, useState} from 'react';
 import {Pressable, ScrollView, Text, View} from 'react-native';
@@ -56,7 +57,6 @@ export function HistoryScreen({user, settings, run, busy, initialSale, initialCl
 
   // ── Vista previa del comprobante: datos históricos guardados, nunca los precios actuales.
   if (sale && receipt) return <Page testID="receipt-screen" footer={<FooterBar>
-      <Button title="Imprimir" icon="printer" style={{flex: 1.2}} disabled={busy} onPress={() => pdf(`/sales/${sale.id}`, 'print')} testID="receipt-print"/>
       <Button title="Compartir" icon="share-2" variant="secondary" style={{flex: 1}} disabled={busy} onPress={() => pdf(`/sales/${sale.id}`, 'share')}/>
       <Button title="PDF" icon="download" variant="outline" disabled={busy} onPress={() => pdf(`/sales/${sale.id}`, 'open')} testID="receipt-pdf"/>
     </FooterBar>}>
@@ -90,7 +90,6 @@ export function HistoryScreen({user, settings, run, busy, initialSale, initialCl
     </Card>
     <Button title="Ver comprobante" icon="file-text" size="lg" onPress={() => setReceipt(true)} testID="view-receipt"/>
     <View style={[styles.row, {gap: 10}]}>
-      <Button title="Reimprimir" icon="printer" variant="secondary" style={{flex: 1}} disabled={busy} onPress={() => pdf(`/sales/${sale.id}`, 'print')}/>
       <Button title="Compartir" icon="share-2" variant="secondary" style={{flex: 1}} disabled={busy} onPress={() => pdf(`/sales/${sale.id}`, 'share')}/>
     </View>
     <Text style={[styles.small, {textAlign: 'center'}]}>Las ventas confirmadas son definitivas. El sistema no permite anularlas ni editarlas.</Text>
@@ -112,7 +111,7 @@ export function HistoryScreen({user, settings, run, busy, initialSale, initialCl
       <InfoRow label="Efectivo recibido (ventas + abonos)" value={cop(c.cash_cents)}/>
       <InfoRow label="Electrónico recibido (ventas + abonos)" value={cop(c.electronic_cents)}/>
       {c.platforms.map((p, i) => <InfoRow key={i} label={`· ${p.platform_name}`} value={cop(p.amount)}/>)}
-      <InfoRow label="Base inicial" value={cop(c.opening_cents)}/>
+      <InfoRow label="Base inicial" value={cop(c.opening_cents)}/><InfoRow label="Gastos en efectivo" value={cop(c.expense_cents||0)}/>
     </Card>
     <Card>
       <Text style={styles.sectionTitle}>Conciliación</Text>
@@ -131,12 +130,12 @@ export function HistoryScreen({user, settings, run, busy, initialSale, initialCl
     </Card>
     {c.financial_details&&<Card><Text style={styles.h2}>Ventas por vendedor y cobros</Text>{c.financial_details.by_seller.map((s:any)=><View key={s.user_id+'/'+s.agent_id}><Text style={styles.h2}>{s.seller_name} · {s.user_name}</Text><FinancialSummary value={s}/></View>)}<FinancialSummary value={c.financial_details}/></Card>}
 
+    <Card><CashMovements value={c}/></Card>
     <Button title="Ver ventas incluidas" icon="list" variant="secondary" onPress={() => { setActiveSession(closure.session_id); setPeriod('all'); setClosure(null); setTab('sales'); }}/>
     <Card>
       <Text style={styles.sectionTitle}>Documento del cierre</Text>
       <WidthPicker/>
       <View style={[styles.row, {gap: 10, flexWrap: 'wrap'}]}>
-        <Button title="Imprimir" icon="printer" style={{flexGrow: 1}} disabled={busy} onPress={() => pdf(`/closures/${closure.id}`, 'print')}/>
         <Button title="Compartir" icon="share-2" variant="secondary" style={{flexGrow: 1}} disabled={busy} onPress={() => pdf(`/closures/${closure.id}`, 'share')}/>
         <Button title="PDF" icon="download" variant="outline" style={{flexGrow: 1}} disabled={busy} onPress={() => pdf(`/closures/${closure.id}`, 'open')}/>
       </View>

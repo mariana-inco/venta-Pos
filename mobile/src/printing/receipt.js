@@ -29,9 +29,11 @@ export function ticketLines(record,kind='sale',width=58){
  }else{
   add('Abrió: '+s.opener_name);add('Cerró: '+s.admin_name);rule();
   pair('Ventas',String(s.sale_count));pair('Total vendido',money(s.total_cents));pair('Base inicial',money(s.opening_cents));
-  pair('Efectivo esperado',money(s.expected_cash_cents));pair('Efectivo contado',money(s.declared_cash_cents));pair('Diferencia efectivo',money(s.cash_difference_cents));
+  if(s.expense_cents)pair('Menos gastos',money(s.expense_cents));pair('Efectivo esperado',money(s.expected_cash_cents));pair('Efectivo contado',money(s.declared_cash_cents));pair('Diferencia efectivo',money(s.cash_difference_cents));
   pair('Electrónico registrado',money(s.electronic_cents));pair('Electrónico verificado',money(s.declared_electronic_cents));pair('Diferencia electrónico',money(s.electronic_difference_cents));
   if(s.financial_details){const f=s.financial_details;rule();add('VENTAS Y ABONOS');pair('Ventas a crédito',money(f.credit_cents));pair('Ventas efectivo',money(f.sale_cash_cents));pair('Ventas electrónicas',money(f.sale_electronic_cents));pair('Abonos efectivo',money(f.collection_cash_cents));pair('Abonos electrónicos',money(f.collection_electronic_cents));for(const v of f.by_seller){add(v.seller_name+' · '+v.user_name);pair('Vendido',money(v.total_cents));}}
+  if(s.collection_details){rule();add('CLIENTES QUE ABONARON');for(const c of s.collection_details){pair(c.customer_name,money(c.amount_cents));add((c.method==='cash'?'Efectivo':'Electrónico')+' · Recibió: '+c.user_name);}}
+  if(s.expense_details){rule();add('GASTOS EN EFECTIVO');for(const e of s.expense_details){pair(e.description,money(e.amount_cents));add(e.user_name);}pair('Total gastos',money(s.expense_cents||0));}
   pair('Diferencia total',money(s.total_difference_cents));if(s.notes)add(s.notes);
  }
  return lines;

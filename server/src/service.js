@@ -1,3 +1,4 @@
+import {expenseDetails,collectionDetails} from './cash-expenses.js';
 import {WHATSAPP_NUMBER} from './receipt-contact.js';
 import {lockedSale} from './sale-drafts.js';
 import {salePayments,saveReference,paymentsFor} from './payments.js';
@@ -23,7 +24,9 @@ export function totals(db,sessionId) {
  const cash=collected.filter(r=>r.method==='cash').reduce((a,r)=>a+r.amount,0)+rows.filter(r=>r.method==='cash').reduce((a,r)=>a+r.amount,0);
  const electronic=collected.filter(r=>r.method==='electronic').reduce((a,r)=>a+r.amount,0)+rows.filter(r=>r.method==='electronic').reduce((a,r)=>a+r.amount,0);
  const count=db.prepare('SELECT COUNT(*) AS n FROM sales WHERE session_id=? AND NOT EXISTS(SELECT 1 FROM sale_voids v WHERE v.sale_id=sales.id)').get(sessionId).n;
- return {cash_cents:cash,electronic_cents:electronic,total_cents:db.prepare('SELECT COALESCE(SUM(total_cents),0) n FROM sales WHERE session_id=? AND NOT EXISTS(SELECT 1 FROM sale_voids v WHERE v.sale_id=sales.id)').get(sessionId).n,collection_cents:collected.reduce((a,r)=>a+r.amount,0),sale_count:count,platforms:[...rows.filter(r=>r.method==='electronic'),...collected.filter(r=>r.method==='electronic').map(r=>({platform_name:'Abonos electrónicos',platform_id:null,amount:r.amount}))]};
+ const expense_details=expenseDetails(db,sessionId),collection_details=collectionDetails(db,sessionId),expense_cents=expense_details.reduce((n,e)=>n+e.amount_cents,0);
+ const movement_key=digest(JSON.stringify({rows,collected,count,expenses:expense_details,collections:collection_details}));
+ return {expense_cents,expense_details,collection_details,movement_key,cash_cents:cash,electronic_cents:electronic,total_cents:db.prepare('SELECT COALESCE(SUM(total_cents),0) n FROM sales WHERE session_id=? AND NOT EXISTS(SELECT 1 FROM sale_voids v WHERE v.sale_id=sales.id)').get(sessionId).n,collection_cents:collected.reduce((a,r)=>a+r.amount,0),sale_count:count,platforms:[...rows.filter(r=>r.method==='electronic'),...collected.filter(r=>r.method==='electronic').map(r=>({platform_name:'Abonos electrónicos',platform_id:null,amount:r.amount}))]};
 }
 export function saleDetail(db,user,saleId) {
  const sale=db.prepare('SELECT * FROM sales WHERE id=?').get(saleId);
@@ -98,7 +101,8 @@ export function closeSession(db,user,sessionId,input,offline=null,administrative
   const computed=totals(db,session.id);
   if(input.reviewed_sale_count!==undefined && input.reviewed_sale_count!==computed.sale_count) fail(409,'Se registraron ventas después de revisar la caja. Cancela y vuelve a abrir la conciliación con los totales actualizados.');
   const declaredCash=money(input.declared_cash),declaredElectronic=money(input.declared_electronic);
-  const expectedCash=session.opening_cents+computed.cash_cents;
+  if(input.reviewed_movement_key&&input.reviewed_movement_key!==computed.movement_key)fail(409,'Los movimientos de caja cambiaron. Revisa los abonos y gastos antes de cerrar.');
+  const expectedCash=session.opening_cents+computed.cash_cents-computed.expense_cents;
   const created=offline?.createdAt||now(); const closureId=offline?.id||id();
   const number=db.prepare('SELECT COALESCE(MAX(number),0)+1 AS n FROM closures').get().n;
   const route=routeFor(db,{id:session.opened_by});

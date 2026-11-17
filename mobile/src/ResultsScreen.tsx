@@ -46,8 +46,8 @@ function Report({r,i}:{r:any;i:any}){
   {!!sellers.length&&<Section title="Por vendedor">{sellers.map((s:any)=><Card key={s.user_id+'/'+s.agent_id}><Text style={styles.h2}>{s.seller_name} · {s.user_name}</Text><FinancialSummary value={s}/></Card>)}</Section>}
   {!!users.length&&<Section title="Por usuario">{users.map((u:any)=><Card key={u.user_id}><Text style={styles.h2}>Total del usuario: {u.name}</Text><FinancialSummary value={u}/></Card>)}</Section>}
   <Section title={`Abonos registrados (${collections.length})`}><Card style={{gap:0,paddingVertical:6}}>{collections.length?collections.map((c:any,n:number)=><View key={c.id} style={[{paddingVertical:8,gap:2},n>0&&{borderTopWidth:1,borderTopColor:colors.line}]}>
-   <View style={styles.row}><Text style={[styles.body,{flex:1}]}>{c.user_name}</Text><Text style={styles.money}>{cop(c.amount_cents)}</Text></View>
-   <Text style={styles.small}>{c.method==='cash'?'Efectivo':'Electrónico'} · {date(c.created_at)}</Text>
+   <View style={styles.row}><Text style={[styles.body,{flex:1}]}>{c.customer_name||'Cliente no disponible'}</Text><Text style={styles.money}>{cop(c.amount_cents)}</Text></View>
+   <Text style={styles.small}>{c.method==='cash'?'Efectivo':'Electrónico'} · Recibió: {c.user_name} · {date(c.created_at)}</Text>
   </View>):<Text style={[styles.small,{paddingVertical:8}]}>Sin abonos en este período.</Text>}</Card></Section>
   {i&&<Section title="Inventario de la ruta"><Card><InventorySummary value={i}/></Card></Section>}
  </>;

@@ -1,0 +1,1 @@
+export const activeRouteClosure=(db,routeId,day)=>db.prepare(`SELECT c.* FROM daily_closures c WHERE c.route_id=? AND c.day=? AND NOT EXISTS(SELECT 1 FROM route_reopenings r WHERE r.closure_id=c.id) ORDER BY c.rowid DESC LIMIT 1`).get(routeId,day);

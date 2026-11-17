@@ -1,3 +1,4 @@
+import {CashMovements} from './CashMovements';
 import {offlineEnabled} from './offline/runtime';
 import React, {useEffect, useState} from 'react';
 import {Text, View} from 'react-native';
@@ -20,7 +21,7 @@ export function CashScreen({sessions, user, run, refresh, busy, onClosure, onHis
   useBack(!!selected, () => setSelected(null));
 
   // Regla existente: efectivo esperado = saldo inicial + ventas en efectivo. Electrónico se concilia aparte.
-  const expected = selected ? selected.opening_cents + selected.cash_cents : 0;
+  const expected = selected ? selected.opening_cents + selected.cash_cents - (selected.expense_cents||0) : 0;
   const cashCents = moneyToCents(cash), elecCents = moneyToCents(electronic);
   const cashDiff = cashCents === null ? 0 : cashCents - expected, elecDiff = elecCents === null ? 0 : elecCents - (selected?.electronic_cents || 0);
   const valid = cashCents !== null && elecCents !== null;
@@ -32,7 +33,7 @@ export function CashScreen({sessions, user, run, refresh, busy, onClosure, onHis
     setSelected({...latest, number: session.number}); setCash(''); setElectronic(''); setNotes(''); setReview(false);
   }
   async function close() {
-    const c = await api<Closure>(`/cash-sessions/${selected!.id}/close`, 'POST', {reviewed_sale_count: selected!.sale_count, declared_cash: normalizeMoney(cash), declared_electronic: normalizeMoney(electronic), notes});
+    const c = await api<Closure>(`/cash-sessions/${selected!.id}/close`, 'POST', {reviewed_sale_count: selected!.sale_count, reviewed_movement_key:selected!.movement_key, declared_cash: normalizeMoney(cash), declared_electronic: normalizeMoney(electronic), notes});
     setReview(false); setSelected(null); onClosure(c); await refresh();
   }
 
@@ -43,12 +44,13 @@ export function CashScreen({sessions, user, run, refresh, busy, onClosure, onHis
       <Text style={styles.sectionTitle}>Lo que dice el sistema</Text>
       <InfoRow label="Ventas registradas" value={String(selected.sale_count)}/>
       <InfoRow label="Base inicial" value={cop(selected.opening_cents)}/>
-      <InfoRow label="Ventas en efectivo" value={cop(selected.cash_cents)}/>
-      <InfoRow label="Efectivo esperado" value={cop(expected)} strong/>
+      <InfoRow label="Efectivo recibido (ventas + abonos)" value={cop(selected.cash_cents)}/>
+      <InfoRow label="Gastos en efectivo" value={cop(selected.expense_cents||0)}/><InfoRow label="Efectivo esperado" value={cop(expected)} strong/>
       <Divider/>
       <InfoRow label="Pagos electrónicos" value={cop(selected.electronic_cents)} strong/>
       {selected.platforms?.map(p => <InfoRow key={p.platform_name} label={`· ${p.platform_name}`} value={cop(p.amount)}/>)}
     </Card>
+    <Card><CashMovements value={selected}/></Card>
     <Card>
       <Text style={styles.sectionTitle}>Lo que contaste</Text>
       <Field label="Efectivo físico en caja" kind="decimal" prefix="$" value={cash} onChange={setCash} placeholder="0" hint={`Incluye la base de ${cop(selected.opening_cents)}.`} error={cash && cashCents === null ? 'Escribe un valor válido, por ejemplo 250.000' : null} testID="close-cash"/>
@@ -69,7 +71,7 @@ export function CashScreen({sessions, user, run, refresh, busy, onClosure, onHis
         <Divider/>
         <InfoRow label="Diferencia total" value={signed(cashDiff + elecDiff)} strong/>
       </Card>
-      <Text style={styles.small}>El servidor vuelve a sumar las ventas al cerrar. Si entró una venta nueva mientras contabas, te pedirá revisar otra vez.</Text>
+      <Text style={styles.small}>El servidor vuelve a sumar las ventas al cerrar. Si cambió una venta, abono o gasto mientras contabas, te pedirá revisar otra vez.</Text>
     </Confirm>
   </Page>;
 
@@ -125,12 +127,12 @@ function SessionCard({session: s, mine, admin, busy, onHistory, onClose, onSell}
       <Text style={[styles.small, {color: colors.ink}]}>Total vendido · {s.sale_count} {s.sale_count === 1 ? 'venta' : 'ventas'}</Text>
       <Text style={[styles.metric, {fontSize: 28, color: colors.ink}]}>{cop(s.total_cents)}</Text>
     </View>
-    <InfoRow label="Efectivo vendido" value={cop(s.cash_cents)}/>
+    <InfoRow label="Efectivo recibido (ventas + abonos)" value={cop(s.cash_cents)}/>
     <InfoRow label="Pagos electrónicos" value={cop(s.electronic_cents)}/>
     {s.platforms?.map(p => <InfoRow key={p.platform_name} label={`· ${p.platform_name}`} value={cop(p.amount)}/>)}
-    <InfoRow label="Base inicial" value={cop(s.opening_cents)}/>
+    <InfoRow label="Base inicial" value={cop(s.opening_cents)}/><InfoRow label="Gastos en efectivo" value={cop(s.expense_cents||0)}/>
     <Divider/>
-    <InfoRow label="Efectivo esperado en caja" value={cop(s.opening_cents + s.cash_cents)} strong/>
+    <InfoRow label="Efectivo esperado en caja" value={cop(s.opening_cents + s.cash_cents - (s.expense_cents||0))} strong/>
     <View style={[styles.row, {gap: 10, flexWrap: 'wrap'}]}>
       {onSell && <Button title="Vender" icon="shopping-cart" style={{flexGrow: 1}} onPress={onSell}/>}
       <Button title="Ver ventas" icon="list" variant="secondary" style={{flexGrow: 1}} onPress={() => onHistory(s.id)}/>

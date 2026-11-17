@@ -1,3 +1,4 @@
+import {ExpensesScreen} from './src/ExpensesScreen';
 import {InventoryScreen} from './src/InventoryScreen';
 import {RouteClosureScreen} from './src/RouteClosureScreen';
 import {RoutesScreen} from './src/RoutesScreen';
@@ -25,7 +26,7 @@ import {MenuScreen} from './src/MenuScreen';
 // Lo diario queda a un toque; el resto de módulos vive en "Más", agrupado por tarea.
 const tabs=[{id:'home',name:'Inicio',icon:'home'},{id:'cash',name:'Caja',icon:'inbox'},{id:'sale',name:'Vender',icon:'shopping-cart'},{id:'history',name:'Historial',icon:'clock'},{id:'more',name:'Más',icon:'grid'}] as const;
 // Módulos que se abren desde "Más": marcan esa pestaña y el botón atrás regresa a ella.
-const moreTabs:Tab[]=['catalog','operations','routes','inventory','routeclose','results','settings'];
+const moreTabs:Tab[]=['expenses','catalog','operations','routes','inventory','routeclose','results','settings'];
 export type Run=(fn:()=>Promise<void>,success?:string)=>void;
 export default function App(){return <SafeAreaProvider><Main/></SafeAreaProvider>;}
 function Main(){
@@ -91,6 +92,7 @@ function Main(){
    {tab==='operations'&&<OperationsScreen onBack={()=>go('more')} user={user} products={products} customers={customers} session={own} run={run} busy={busy} refresh={refresh}/>}
    {tab==='routes'&&<RoutesScreen onBack={()=>go('more')} user={user} run={run} busy={busy}/>}
    {tab==='inventory'&&<InventoryScreen onBack={()=>go('more')} user={user} products={products} customers={customers} run={run} busy={busy} refresh={refresh}/>}
+   {tab==='expenses'&&<ExpensesScreen user={user} sessions={sessions} run={run} busy={busy} refresh={refresh} onBack={()=>go('more')}/>}
    {tab==='routeclose'&&<RouteClosureScreen onBack={()=>go('more')} user={user} run={run} busy={busy} refresh={refresh}/>}
    {tab==='results'&&user.role==='admin'&&<ResultsScreen onBack={()=>go('more')} run={run} busy={busy}/>}
    {tab==='settings'&&<SettingsScreen onBack={()=>go('more')} user={user} settings={settings} platforms={platforms} run={run} refresh={refresh} busy={busy} logout={logout}/>}

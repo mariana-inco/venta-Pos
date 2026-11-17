@@ -1,3 +1,4 @@
+import {mountExpenses} from './cash-expenses.js';
 import {dataGeneration} from './data-generation.js';
 import {normalizedReference} from './payments.js';
 import {startSale} from './sale-drafts.js';
@@ -33,6 +34,7 @@ export function createApp(db) {
  app.post('/api/auth/login',rateLimit({windowMs:15*60*1000,limit:20,standardHeaders:'draft-8',legacyHeaders:false,message:{error:'Demasiados intentos. Espera 15 minutos.'}}),validate(schemas.login),async(req,res)=>res.json(await login(db,req.input.username,req.input.password)));
  mountSync(app,db);
  app.use('/api',authenticate(db));
+ mountExpenses(app,db);
  mountDeviceAdmin(app,db);
  mountUsers(app,db);
  app.get('/api/me',(req,res)=>res.json(req.user));
@@ -111,7 +113,7 @@ export function createApp(db) {
   if(db.prepare("SELECT id FROM cash_sessions WHERE opened_by=? AND state='open' AND device_id IS NULL").get(req.user.id))fail(409,'Ya tienes una caja abierta.');
   const sessionId=id();db.prepare('INSERT INTO cash_sessions (id,opened_by,opened_at,opening_cents,state,closed_at) VALUES (?,?,?,?,?,?)').run(sessionId,req.user.id,now(),money(req.input.opening),'open',null);audit(db,req.user.id,'cash.open',sessionId,req.input);return sessionFor(db,req.user,sessionId);
  })));
- app.get('/api/cash-sessions/:id',(req,res)=>{const session=sessionFor(db,req.user,req.params.id);const computed=totals(db,session.id);res.json({...session,...computed,expected_cash_cents:session.opening_cents+computed.cash_cents,closure_id:db.prepare('SELECT id FROM closures WHERE session_id=?').get(session.id)?.id||null});});
+ app.get('/api/cash-sessions/:id',(req,res)=>{const session=sessionFor(db,req.user,req.params.id);const computed=totals(db,session.id);res.json({...session,...computed,expected_cash_cents:session.opening_cents+computed.cash_cents-computed.expense_cents,closure_id:db.prepare('SELECT id FROM closures WHERE session_id=?').get(session.id)?.id||null});});
  app.post('/api/sales',validate(schemas.sale),async(req,res)=>{const sale=recordSale(db,req.user,req.input);res.status(201).json({...sale,...await generateDocuments(db,'sale',sale)});});
  app.get('/api/sales',(req,res)=>{
   const filter=z.object({session_id:z.string().uuid().optional(),seller_id:z.string().uuid().optional(),customer_id:z.string().uuid().optional(),method:z.enum(['cash','electronic','credit','mixed']).optional(),from:z.iso.date().optional(),to:z.iso.date().optional(),page:z.coerce.number().int().min(1).max(100000).default(1)}).safeParse(req.query);

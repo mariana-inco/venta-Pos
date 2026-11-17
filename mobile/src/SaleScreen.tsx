@@ -144,7 +144,6 @@ export function SaleScreen({route,userId, active, session, products:rawProducts,
       </View>
       {sale.pdf_message && <Banner tone="orange" text={sale.pdf_message}/>}
       <View style={{gap: 10}}>
-        <Button title="Imprimir comprobante" icon="printer" size="lg" disabled={busy} onPress={() => run(() => documentAction(`/sales/${sale.id}`, paperWidth, 'print'), 'Comprobante enviado a la impresora')} testID="sale-print"/>
         <View style={[styles.wrap, {gap: 10}]}>
           <Button title="Ver comprobante" icon="file-text" variant="outline" style={{flexGrow: 1, minWidth: 180}} onPress={() => { setDone(null); onViewSale(sale); }} testID="sale-view-receipt"/>
           <Button title="Compartir" icon="share-2" variant="outline" style={{flexGrow: 1, minWidth: 120}} disabled={busy} onPress={() => run(() => documentAction(`/sales/${sale.id}`, paperWidth, 'share'))}/>
