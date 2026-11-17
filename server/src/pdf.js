@@ -1,3 +1,4 @@
+import {WHATSAPP_NUMBER,WHATSAPP_PATH,clientDebt} from './receipt-contact.js';
 import {publicNumber} from './receipt-numbers.js';
 import PDFDocument from 'pdfkit';
 import { fileURLToPath } from 'node:url';
@@ -29,6 +30,7 @@ async function build(lines,widthMm,title) {
   if(line.space!==undefined)return {...line,height:line.space};
   if(line.rule)return {...line,height:line.rule==='double'?9:7};
   if(line.logo)return {...line,height:L.logo*LOGO_RATIO+4};
+  if(line.whatsapp)return {...line,height:17};
   if(line.pair){
    const [left,right]=line.pair.map(clean);
    measure.font(font(line.boldRight??line.bold)).fontSize(size);const rightWidth=measure.widthOfString(right);
@@ -52,6 +54,12 @@ async function build(lines,widthMm,title) {
    doc.moveTo(x,y+3).lineTo(x+usable,y+3).stroke();if(line.rule==='double')doc.moveTo(x,y+6).lineTo(x+usable,y+6).stroke();doc.undash();
   } else if(line.logo){
    doc.image(LOGO,x+(usable-L.logo)/2,y,{width:L.logo});
+  } else if(line.whatsapp){
+   const icon=12,size=10,gap=4;
+   doc.font('Helvetica-Bold').fontSize(size);
+   const left=x+(usable-icon-gap-doc.widthOfString(WHATSAPP_NUMBER))/2;
+   doc.save().translate(left,y).scale(icon/1548).path(WHATSAPP_PATH).fill('#000000').restore();
+   doc.text(WHATSAPP_NUMBER,left+icon+gap,y+1,{lineBreak:false});
   } else if(line.pair){
    const [left,right]=line.pair.map(clean);
    doc.font(font(line.bold)).fontSize(line.size).text(left,x,y,{width:usable,lineGap:1});
@@ -69,7 +77,7 @@ function businessHeader(s,L) {
  if(s.business_nit)lines.push({text:`NIT ${s.business_nit}`,align:'center',size:L.small});
  const place=[s.business_address,s.business_city].filter(Boolean).join(' · ');
  if(place)lines.push({text:place,align:'center',size:L.small});
- if(s.business_phone)lines.push({text:`Tel. ${s.business_phone}`,align:'center',size:L.small});
+ if(s.business_phone&&!s.business_whatsapp)lines.push({text:`Tel. ${s.business_phone}`,align:'center',size:L.small});
  return lines;
 }
 export async function receiptPdf(sale,width=58) {
@@ -87,7 +95,8 @@ export async function receiptPdf(sale,width=58) {
  const count=sale.items.length;
  lines.push({rule:'dash'},{pair:['Subtotal',cop(sale.total_cents)]},{rule:'double'},{pair:['TOTAL',cop(sale.total_cents)],bold:true,size:L.total},{rule:'double'},
   {pair:['Productos',String(count)]});
- if(s.credit)lines.push({pair:['Venta a crédito','']},{pair:['Abono inicial',cop(s.initial_paid_cents||0)]},{pair:['Saldo al emitir',cop(s.initial_balance_cents||0)],bold:true},{text:(s.initial_balance_cents||0)===0?'PAGADA':s.initial_paid_cents?'PAGO PARCIAL':'PENDIENTE',bold:true});
+ if(s.credit){lines.push({pair:['Venta a crédito','']});if(s.initial_paid_cents>0)lines.push({pair:['Abono inicial',cop(s.initial_paid_cents)]});lines.push({text:(s.initial_balance_cents||0)===0?'PAGADA':s.initial_paid_cents?'PAGO PARCIAL':'PENDIENTE',bold:true});}
+ if(clientDebt(s)>0)lines.push({space:3},{pair:['Saldo del cliente',cop(clientDebt(s))],bold:true});
  if(s.cash_received_cents!==null&&s.cash_received_cents!==undefined)lines.push({pair:['Recibido',cop(s.cash_received_cents)]},{pair:['Cambio',cop(s.cash_change_cents||0)]});
  if(s.credit&&!sale.payments.length)lines.push({pair:['Método de pago','CRÉDITO']});
  for(const p of sale.payments){
@@ -95,7 +104,7 @@ export async function receiptPdf(sale,width=58) {
   if(p.reference)lines.push({text:'Referencia: '+p.reference,size:L.small});
   if(p.method!=='cash')lines.push({pair:['','Pago electrónico'],size:L.small});
  }
- lines.push({rule:'dash'},{space:2},{text:`¡Gracias por comprar en ${shortBrand(s.business_name)}!`,bold:true,align:'center'},{space:3},
+ lines.push({rule:'dash'},{whatsapp:true},{space:2},{text:`¡Gracias por comprar en ${shortBrand(s.business_name)}!`,bold:true,align:'center'},{space:3},
   {text:'Comprobante de venta.',align:'center',size:L.small},{text:'No es factura electrónica.',align:'center',size:L.small});
  return build(lines,width,`Venta ${saleNumber(sale)}`);
 }

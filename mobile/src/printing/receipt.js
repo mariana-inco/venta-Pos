@@ -1,3 +1,4 @@
+import {WHATSAPP_NUMBER,WHATSAPP_MARKER,WHATSAPP_PATH,clientDebt} from './contact.js';
 import {saleNumber,businessName} from './number.js';
 // Values come from saved receipts; strip control bytes before ESC/POS output.
 const safe=value=>String(value??'').replace(/[\x00-\x1f\x7f]/g,' ').trim();
@@ -12,7 +13,7 @@ export function ticketLines(record,kind='sale',width=58){
  const center=value=>{const text=safe(value);if(text.length>columns)return add(text);lines.push(' '.repeat(Math.floor((columns-text.length)/2))+text);};
  const pair=(a,b)=>{a=safe(a);b=safe(b);if(a.length+b.length+1<=columns)add(a+' '.repeat(columns-a.length-b.length)+b);else{add(a);if(b.length>columns)add(b);else lines.push(b.padStart(columns,' '));}};
  const rule=(char='-')=>add(char.repeat(columns));
- center(businessName(s.business_name));if(s.business_nit)center('NIT '+s.business_nit);if(s.business_address)center(s.business_address);if(s.business_city)center(s.business_city);if(s.business_phone)center('Tel. '+s.business_phone);
+ center(businessName(s.business_name));if(s.business_nit)center('NIT '+s.business_nit);if(s.business_address)center(s.business_address);if(s.business_city)center(s.business_city);if(s.business_phone&&!s.business_whatsapp)center('Tel. '+s.business_phone);
  rule();center(kind==='sale'?'COMPROBANTE DE VENTA':'CIERRE DE CAJA');
  center(kind==='sale'?saleNumber(record):`C-${String(record.number).padStart(2,'0')}`);
  center(new Intl.DateTimeFormat('es-CO',{dateStyle:'short',timeStyle:'short',timeZone:'America/Bogota'}).format(new Date(record.created_at)));rule();
@@ -22,8 +23,9 @@ export function ticketLines(record,kind='sale',width=58){
   rule('=');pair('TOTAL',money(record.total_cents));rule('=');
   for(const p of record.payments||[]){pair(p.method==='cash'?'EFECTIVO':p.platform_name||'ELECTRÓNICO',money(p.amount_cents));if(p.reference)add('Ref: '+p.reference);}
   if(s.cash_received_cents!=null){pair('Recibido',money(s.cash_received_cents));pair('Cambio',money(s.cash_change_cents||0));}
-  if(s.credit){pair('Abono inicial',money(s.initial_paid_cents||0));pair('Saldo al emitir',money(s.initial_balance_cents||0));center((s.initial_balance_cents||0)===0?'PAGADA':s.initial_paid_cents?'PAGO PARCIAL':'PENDIENTE');}
-  rule();center('¡Gracias por su compra!');center('DOK POLLO MC');add('');center('Comprobante de venta.');center('No es factura electrónica.');
+  if(s.credit){center('VENTA A CRÉDITO');if(s.initial_paid_cents>0)pair('Abono inicial',money(s.initial_paid_cents));center((s.initial_balance_cents||0)===0?'PAGADA':s.initial_paid_cents?'PAGO PARCIAL':'PENDIENTE');}
+  if(clientDebt(s)>0){rule();pair('Saldo del cliente',money(clientDebt(s)));}
+  rule();add(WHATSAPP_MARKER);center('¡Gracias por su compra!');center('DOK POLLO MC');add('');center('Comprobante de venta.');center('No es factura electrónica.');
  }else{
   add('Abrió: '+s.opener_name);add('Cerró: '+s.admin_name);rule();
   pair('Ventas',String(s.sale_count));pair('Total vendido',money(s.total_cents));pair('Base inicial',money(s.opening_cents));
@@ -38,5 +40,5 @@ const escape=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;'
 export function ticketHtml(record,kind='sale',width=58,logoData=''){
  const lines=ticketLines(record,kind,width);
  const logo=/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(logoData)?`<img alt="DOK POLLO MC" src="${logoData}">`:'';
- return `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><style>@page{size:${width}mm auto;margin:4mm 5mm}body{margin:0;color:#000;background:white;width:${width-10}mm}img{display:block;width:24mm;height:24mm;object-fit:contain;margin:0 auto 2mm;filter:grayscale(1) contrast(2)}pre{font:10px monospace;white-space:pre-wrap;overflow-wrap:anywhere;margin:0}</style></head><body>${logo}<pre>${escape(lines.join('\n'))}</pre></body></html>`;
+ return `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><style>@page{size:${width}mm auto;margin:4mm 5mm}body{margin:0;color:#000;background:white;width:${width-10}mm}img{display:block;width:24mm;height:24mm;object-fit:contain;margin:0 auto 2mm;filter:grayscale(1) contrast(2)}pre{font:10px monospace;white-space:pre-wrap;overflow-wrap:anywhere;margin:0}</style></head><body>${logo}<pre>${lines.map(line=>line===WHATSAPP_MARKER?`</pre><div style="display:flex;justify-content:center;align-items:center;gap:4px;margin:4px 0;font:bold 12px sans-serif"><svg xmlns="http://www.w3.org/2000/svg" aria-label="WhatsApp" viewBox="0 0 1536 1548" width="16" height="16"><path d="${WHATSAPP_PATH}"/></svg>${WHATSAPP_NUMBER}</div><pre>`:escape(line)).join('\n')}</pre></body></html>`;
 }

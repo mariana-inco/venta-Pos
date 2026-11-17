@@ -33,6 +33,13 @@ export function balance(db,saleId){
  const remaining=voided?0:s.total_cents-initial-collected;
  return {paid_cents:initial+collected,balance_cents:remaining,state:voided?'ANULADA':remaining===0?'PAGADA':initial+collected>0?'PAGO PARCIAL':'PENDIENTE'};
 }
+// Full customer balance, including older routes; used only after access to this customer is validated.
+export function customerBalance(db,customerId){
+ return db.prepare(`SELECT COALESCE(SUM(s.total_cents
+  -COALESCE((SELECT SUM(p.amount_cents) FROM payments p WHERE p.sale_id=s.id),0)
+  -COALESCE((SELECT SUM(a.amount_cents) FROM collection_allocations a WHERE a.sale_id=s.id AND NOT EXISTS(SELECT 1 FROM collection_reversals r WHERE r.collection_id=a.collection_id)),0)),0) balance_cents
+  FROM sales s WHERE s.customer_id=? AND NOT EXISTS(SELECT 1 FROM sale_voids v WHERE v.sale_id=s.id)`).get(customerId).balance_cents;
+}
 export function consumeRoute(db,user,route,items,saleId){
  for(const i of items){const group=db.prepare('SELECT g.* FROM inventory_groups g JOIN product_groups p ON p.group_id=g.id WHERE p.product_id=?').get(i.product_id);if(!group||group.unit!==i.unit)fail(409,`Configura el inventario por ruta de ${i.name}.`);
  const stock=db.prepare('SELECT available_milli FROM route_stock WHERE route_id=? AND group_id=?').get(route.id,group.id);

@@ -156,7 +156,15 @@ class PosPrinterModule : Module() {
             output.write(byteArrayOf(0x1b, 0x40, 0x1b, 0x74, codePage.toByte()))
             // Strip control bytes supplied by product/customer text; only LF is printable formatting.
             val printable = text.filter { it == '\n' || it.code >= 32 && it.code != 127 }
-            val bytes = logoBytes + (printable + "\n\n\n").toByteArray(Charset.forName(charset))
+            val bytes = ByteArrayOutputStream().apply {
+              write(logoBytes)
+              val parts=printable.split(WhatsappContact.MARKER)
+              for((index,part) in parts.withIndex()){
+                write(part.toByteArray(Charset.forName(charset)))
+                if(index<parts.lastIndex)write(WhatsappContact.escPos())
+              }
+              write("\n\n\n".toByteArray())
+            }.toByteArray()
             for (chunk in bytes.asList().chunked(512)) {
               output.write(chunk.toByteArray()); output.flush(); Thread.sleep(40)
             }

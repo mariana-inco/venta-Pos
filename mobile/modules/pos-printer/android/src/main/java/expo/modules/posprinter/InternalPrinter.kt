@@ -79,7 +79,15 @@ class InternalPrinter(private val context: Context) {
         printer.setAlignment(1)
         if (bitmap != null) printer.printBitmap(bitmap)
         printer.setAlignment(0)
-        printer.printText(text.filter { it == '\n' || it.code >= 32 && it.code != 127 } + "\n")
+        val parts=text.filter { it == '\n' || it.code >= 32 && it.code != 127 }.split(WhatsappContact.MARKER)
+        for((index,part) in parts.withIndex()){
+          if(part.isNotEmpty())printer.printText(part)
+          if(index<parts.lastIndex){
+            val contact=WhatsappContact.bitmap()
+            try{printer.setAlignment(1);printer.printBitmap(contact)}finally{contact.recycle();printer.setAlignment(0)}
+          }
+        }
+        printer.printText("\n")
         printer.nextLine(3)
       }
     } finally { bitmap?.recycle() }

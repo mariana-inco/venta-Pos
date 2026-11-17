@@ -1,3 +1,5 @@
+import {WHATSAPP_NUMBER,clientDebt} from './printing/contact';
+import {FontAwesome} from '@expo/vector-icons';
 import {businessName} from './printing/number';
 import React from 'react';
 import {Image, StyleSheet, Text, View} from 'react-native';
@@ -26,7 +28,7 @@ export function Receipt({sale, width}: {sale: Sale; width: 58 | 80}) {
     <T bold center>{brand}</T>
     {!!s.business_nit && <T center small>NIT {s.business_nit}</T>}
     {!!place && <T center small>{place}</T>}
-    {!!s.business_phone && <T center small>Tel. {s.business_phone}</T>}
+    {!!s.business_phone && !s.business_whatsapp && <T center small>Tel. {s.business_phone}</T>}
     <View style={r.solid}/>
     <T center small bold>COMPROBANTE DE VENTA</T>
     <T center big bold>Venta {saleNumber(sale)}</T>
@@ -50,7 +52,8 @@ export function Receipt({sale, width}: {sale: Sale; width: 58 | 80}) {
     <Pair left="TOTAL" right={cop(sale.total_cents)} bold big/>
     <View style={r.double}/>
     {s.cash_received_cents!=null&&<><Pair left="Recibido" right={cop(s.cash_received_cents)}/><Pair left="Cambio" right={cop(s.cash_change_cents||0)}/></>}
-    {s.credit&&<><Pair left="Abono inicial" right={cop(s.initial_paid_cents||0)}/><Pair left="Saldo al emitir" right={cop(s.initial_balance_cents||0)}/><T bold>{(s.initial_balance_cents||0)===0?'PAGADA':s.initial_paid_cents?'PAGO PARCIAL':'PENDIENTE'}</T></>}
+    {s.credit&&<><T bold>VENTA A CRÉDITO</T>{!!s.initial_paid_cents&&<Pair left="Abono inicial" right={cop(s.initial_paid_cents)}/>}<T bold>{(s.initial_balance_cents||0)===0?'PAGADA':s.initial_paid_cents?'PAGO PARCIAL':'PENDIENTE'}</T></>}
+    {clientDebt(s)>0&&<Pair left="Saldo del cliente" right={cop(clientDebt(s))} bold/>}
     {sale.state==='ANULADA'&&<T bold>ANULADA · Original conservado</T>}
     <Pair left="Productos" right={String(sale.items?.length || 0)}/>
     {sale.payments?.map((p, i) => <View key={i}>
@@ -59,6 +62,7 @@ export function Receipt({sale, width}: {sale: Sale; width: 58 | 80}) {
       {p.method !== 'cash' && <Text style={{textAlign: 'right', fontSize: size - 2, color: '#111'}}>Pago electrónico</Text>}
     </View>)}
     <View style={r.dash}/>
+    <View style={{flexDirection:'row',alignItems:'center',justifyContent:'center',gap:6,marginVertical:4}}><FontAwesome name="whatsapp" size={20} color="#111" accessibilityLabel="WhatsApp"/><T bold>{WHATSAPP_NUMBER}</T></View>
     <T bold center>¡Gracias por comprar en {brand}!</T>
     <View style={{height: 4}}/>
     <T center small>Comprobante de venta.</T>
