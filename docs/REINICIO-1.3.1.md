@@ -19,3 +19,15 @@ Los dispositivos muestran nombre, usuario y última conexión; los cierres usan 
 ## Validación
 
 27 pruebas backend aprobadas, incluyendo respaldo, conservación de catálogos, cola Android, bloqueo de accesos antiguos y rollback completo ante error. TypeScript y flujo web de negocio aprobados; compilación Android y cinco pruebas nativas de impresión aprobadas. Instalación/lector/impresión física de esta versión pendientes de comprobar en Neotek real.
+
+## Ejecución en producción
+
+Ejecutado el 16 de noviembre de 2026, 21:37 Colombia (17 de noviembre 02:37 UTC), después del despliegue saludable `bre0qmxu7nhetzqghpipnu6u`, backend `b46de52`. Rama `deploy/backend-pos`. El cambio posterior `c49ee1c` afecta exclusivamente la presentación Android del identificador local.
+
+- Respaldo previo al despliegue: `/data/backups/pos-2026-11-17T02-32-42.398Z.sqlite`, integridad ok.
+- Respaldo inmediato con servicio detenido: `/data/backups/before-reset-2026-11-17T02-37-30.655Z.sqlite`, verificado por el script antes de borrar. Copia adicional fuera del volumen Docker: `/root/pos-reset-backups/before-reset-2026-11-17.sqlite` (mismo servidor; no reemplaza copia externa).
+- Eliminados 9 cajas, 11 ventas, 9 pagos, 1 abono, 8 cierres, 19 documentos, 3 entregas y registros operativos relacionados.
+- Verificación posterior: cajas/ventas/pagos/abonos/cierres/entregas en cero; inventario disponible cero; siguiente consecutivo 1. Permanecen 4 usuarios, 3 clientes, 10 productos y 2 rutas.
+- `PRAGMA integrity_check = ok`, `PRAGMA foreign_key_check` vacío. Servicio reiniciado, `/health` 200 y generación nueva confirmada.
+- APK `output/dok-pollo-mc-1.3.1-neotek.apk`, versión 1.3.1/código 12, mismo paquete y certificado. SHA256 `24383f403d55e89620a915d0039e81bb3927187b26526f7014ad6541bfce8d0f`.
+- Sin dispositivos ADB conectados: actualización física de cada terminal e impresión/lector pendientes. Instalar APK mediante LocalSend, cerrar/abrir e iniciar sesión con internet; registrar nuevas entregas para habilitar ventas.
