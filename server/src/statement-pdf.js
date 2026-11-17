@@ -7,8 +7,8 @@ export async function statementPdf(s){
  const header=()=>{doc.font('Helvetica-Bold').fontSize(18).text('DOK POLLO MC');doc.fontSize(15).text('Estado de cuenta');doc.moveDown(.5);doc.font('Helvetica').fontSize(10).text(`Cliente: ${s.customer.name} · ${s.customer.customer_type==='wholesale'?'Mayorista':'Normal'}`).text(`Período: ${s.from||'Todo el historial'} a ${s.to}`).text(`Saldo anterior al período: ${cop(s.opening_cents)}`).moveDown();};header();
  for(const m of s.movements){
   const method=m.method==='cash'?'Efectivo':m.method==='electronic'?'Electrónico':m.method==='credit'?'Crédito':'';
-  const kind=m.kind==='sale'?(m.credit?'VENTA A CRÉDITO':'VENTA DE CONTADO'):m.kind==='collection'?'ABONO':m.kind==='void'?'ANULACIÓN':'REVERSIÓN';
-  const body=`${m.description}\n${m.user_name?'Registró: '+m.user_name+' · ':''}${method}${m.kind==='sale'?' · Venta: '+cop(m.total_cents)+' · Cobro inicial: '+cop(m.initial_paid_cents):''}\nMovimiento en cartera: ${cop(m.amount_cents)} · Saldo: ${cop(m.balance_cents)}`;
+  const kind=m.kind==='sale'?(m.credit?'VENTA A CRÉDITO':'VENTA DE CONTADO'):m.kind==='initial_payment'?(m.credit?'ABONO INICIAL':'PAGO DE VENTA'):m.kind==='collection'?'ABONO':m.kind==='void'?'ANULACIÓN':'REVERSIÓN';
+  const body=`${m.description}\n${m.user_name?'Registró: '+m.user_name+' · ':''}${method}${m.reference?' · Ref: '+m.reference:''}${m.kind==='sale'?' · Venta: '+cop(m.total_cents)+' · Cobro inicial: '+cop(m.initial_paid_cents):''}\nMovimiento en cartera: ${cop(m.amount_cents)} · Saldo: ${cop(m.balance_cents)}`;
   const h=doc.font('Helvetica').fontSize(10).heightOfString(body,{width:515})+45;
   if(doc.y+h>780){doc.addPage();doc.font('Helvetica-Bold').fontSize(12).text('Estado de cuenta · '+s.customer.name).moveDown();}
   doc.font('Helvetica-Bold').fontSize(11).text(`${stamp(m.created_at)} · ${kind} · ${m.number}`);doc.font('Helvetica').fontSize(10).text(body,{width:515});doc.moveDown(.6);doc.moveTo(40,doc.y).lineTo(555,doc.y).strokeColor('#dddddd').stroke();doc.moveDown(.5);

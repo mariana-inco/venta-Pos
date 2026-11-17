@@ -1,3 +1,4 @@
+import {prepareRequest} from './business-fixtures.js';
 import {routeUser,stockProduct} from './business-fixtures.js';
 import test from 'node:test';
 import {backup} from 'node:sqlite';
@@ -18,7 +19,7 @@ test('Flujo integral: permisos, stock, conciliación, persistencia e históricos
  const other=await createUser(db,{name:'Otro',username:'other',password:'seller-123456789',role:'seller'});
  const tokens={admin:(await login(db,a.username,'admin-123456789')).token,seller:(await login(db,u.username,'seller-123456789')).token,other:(await login(db,other.username,'seller-123456789')).token};
  let server=createApp(db).listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));let base=`http://127.0.0.1:${server.address().port}`;
- async function request(method,url,body,role='admin',status=200){const r=await fetch(base+'/api'+url,{method,headers:{Authorization:`Bearer ${tokens[role]}`,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});const json=await r.json();assert.equal(r.status,status,JSON.stringify(json));return json;}
+ async function request(method,url,body,role='admin',status=200){body=prepareRequest(db,tokens[role],url,body);const r=await fetch(base+'/api'+url,{method,headers:{Authorization:`Bearer ${tokens[role]}`,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});const json=await r.json();assert.equal(r.status,status,JSON.stringify(json));return json;}
  try{
   await request('POST','/products',{name:'Denegado',price:'1',unit:'unit'},'seller',403);
   const unit=await request('POST','/products',{name:'Producto unidad',price:'5000',unit:'unit',stock:'1000'},'admin');
@@ -91,7 +92,7 @@ test('Concurrencia: cierre único y ninguna venta posterior al cierre',async()=>
  const db=openDatabase(':memory:');const admin=await createUser(db,{name:'Admin',username:'race-admin',password:'race-password-123',role:'admin'});const user=await createUser(db,{name:'Seller',username:'race-seller',password:'race-password-123',role:'seller'});
  const adminToken=(await login(db,admin.username,'race-password-123')).token;const sellerToken=(await login(db,user.username,'race-password-123')).token;
  const server=createApp(db).listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));const base=`http://127.0.0.1:${server.address().port}/api`;
- async function req(path,body,token){const r=await fetch(base+path,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(body)});return {status:r.status,data:await r.json()};}
+ async function req(path,body,token){body=prepareRequest(db,token,path,body);const r=await fetch(base+path,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(body)});return {status:r.status,data:await r.json()};}
  try{
   const routeSetup=routeUser(db,user.id);
   const p=(await req('/products',{name:'P',unit:'unit',price:'5000'},adminToken)).data;

@@ -1,3 +1,4 @@
+import {dataGeneration,requireGeneration} from './data-generation.js';
 import {customerView} from './business.js';
 import {claimReceipt} from './receipt-numbers.js';
 import {routeFor,productsFor} from './commerce.js';
@@ -23,8 +24,9 @@ export const eventSchema=z.discriminatedUnion('type',[
 export function canonical(value){return Array.isArray(value)?`[${value.map(canonical).join(',')}]`:value&&typeof value==='object'?`{${Object.keys(value).sort().map(k=>JSON.stringify(k)+':'+canonical(value[k])).join(',')}}`:JSON.stringify(value);}
 export const ticketNumber=(deviceId,sequence)=>`${deviceId}/${sequence}`;
 export function registerDevice(db,user,input){
- const parsed=z.object({device_id:uuid,name:text(80)}).parse(input);
+ const parsed=z.object({device_id:uuid,name:text(80),generation:z.string().optional()}).parse(input);
  return transaction(db,()=>{
+  requireGeneration(db,parsed.generation);
   db.prepare('INSERT OR IGNORE INTO sync_devices(id,name,created_at) VALUES (?,?,?)').run(parsed.device_id,parsed.name,now());
   const token=randomBytes(32).toString('hex');
   db.prepare('INSERT INTO device_access(device_id,user_id,token_hash,revoked) VALUES (?,?,?,0) ON CONFLICT(device_id,user_id) DO UPDATE SET token_hash=excluded.token_hash,revoked=0').run(parsed.device_id,user.id,digest(token));
@@ -40,7 +42,7 @@ export function authenticateDevice(db){return (req,res,next)=>{
 };}
 export function catalogFor(db,user,deviceId){
  return transaction(db,()=>{
-  const payload={sales_policy:'route-v2',settings:db.prepare('SELECT * FROM settings WHERE id=1').get(),route:routeFor(db,user),products:productsFor(db,user,true),platforms:db.prepare('SELECT * FROM platforms ORDER BY id').all()};
+  const payload={generation:dataGeneration(db),sales_policy:'route-v2',settings:db.prepare('SELECT * FROM settings WHERE id=1').get(),route:routeFor(db,user),products:productsFor(db,user,true),platforms:db.prepare('SELECT * FROM platforms ORDER BY id').all()};
   const serialized=canonical(payload),version=digest(serialized);
   db.prepare('INSERT OR IGNORE INTO catalog_versions VALUES (?,?,?)').run(version,serialized,now());
   db.prepare('INSERT OR IGNORE INTO device_catalogs VALUES (?,?)').run(deviceId,version);
@@ -152,7 +154,7 @@ export function mountSync(app,db){
 }
 export function mountDeviceAdmin(app,db){
  app.post('/api/devices/register',(req,res)=>{
-  const input=z.object({device_id:uuid,name:text(80)}).safeParse(req.body);if(!input.success)fail(400,'Datos del dispositivo inválidos.');
+  const input=z.object({device_id:uuid,name:text(80),generation:z.string().optional()}).safeParse(req.body);if(!input.success)fail(400,'Datos del dispositivo inválidos.');
   res.status(201).json(registerDevice(db,req.user,input.data));
  });
  app.get('/api/devices',admin,(_,res)=>res.json(db.prepare('SELECT d.*,u.username,a.user_id,a.revoked FROM sync_devices d JOIN device_access a ON a.device_id=d.id JOIN users u ON u.id=a.user_id ORDER BY d.created_at').all()));

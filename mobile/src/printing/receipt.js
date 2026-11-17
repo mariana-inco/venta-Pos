@@ -20,7 +20,7 @@ export function ticketLines(record,kind='sale',width=58){
   add('Vendedor: '+s.seller_name);if(s.route_name)add('Ruta: '+s.route_name);add('Cliente: '+s.customer_name);if(s.customer_city)add(s.customer_city);rule();
   for(const i of record.items||[]){add(i.name.toUpperCase());add(`${qty(i.quantity_milli)} ${i.unit==='kg'?'KG':'UND'} x ${money(i.price_cents)}`);pair('Importe',money(i.subtotal_cents));add('');}
   rule('=');pair('TOTAL',money(record.total_cents));rule('=');
-  for(const p of record.payments||[])pair('Pago',p.method==='cash'?'EFECTIVO':p.platform_name||'ELECTRÓNICO');
+  for(const p of record.payments||[]){pair(p.method==='cash'?'EFECTIVO':p.platform_name||'ELECTRÓNICO',money(p.amount_cents));if(p.reference)add('Ref: '+p.reference);}
   if(s.cash_received_cents!=null){pair('Recibido',money(s.cash_received_cents));pair('Cambio',money(s.cash_change_cents||0));}
   if(s.credit){pair('Abono inicial',money(s.initial_paid_cents||0));pair('Saldo al emitir',money(s.initial_balance_cents||0));center((s.initial_balance_cents||0)===0?'PAGADA':s.initial_paid_cents?'PAGO PARCIAL':'PENDIENTE');}
   rule();center('¡Gracias por su compra!');center('DOK POLLO MC');add('');center('Comprobante de venta.');center('No es factura electrónica.');

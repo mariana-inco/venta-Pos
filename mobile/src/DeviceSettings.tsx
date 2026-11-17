@@ -2,7 +2,7 @@ import React,{useEffect,useState} from 'react';
 import {Text,View} from 'react-native';
 import {Banner,Button,Card,Choice,Confirm,styles} from './ui';
 import {offlineEnabled,subscribeSync,syncNow,type SyncStatus} from './offline/runtime';
-import {pairedPrinters,printerConfig,savePrinter,testPrinter,printerAvailable,type Printer,type PrinterConfig} from './printing/printer';
+import {pairedPrinters,printerConfig,savePrinter,testPrinter,printerAvailable,receiverStatus,startReceiver,stopReceiver,useInternalPrinter,type ReceiverStatus,type Printer,type PrinterConfig} from './printing/printer';
 import {api} from './api';
 import type {Run} from '../App';
 const initial:SyncStatus={pending:0,blocked:0,error:null,last_sync:null,catalog_ready:false,running:false,online:true};
@@ -22,9 +22,12 @@ export function useSyncStatus(){
 }
 export function DeviceSettings({run,busy}:{run:Run;busy:boolean}){
  const [status,setStatus]=useState(initial),[printers,setPrinters]=useState<Printer[]>([]),[selected,setSelected]=useState<PrinterConfig|null>(null),[width,setWidth]=useState('58'),[encoding,setEncoding]=useState('2');
- useEffect(()=>{if(!offlineEnabled)return;const off=subscribeSync(setStatus);void printerConfig().then(p=>{if(p){setSelected(p);setWidth(String(p.width));setEncoding(String(p.codePage));}});return off;},[]);
+ const [mode,setMode]=useState<'bluetooth'|'h10s'|'internal'>('bluetooth');
+ const [receiver,setReceiver]=useState<ReceiverStatus>({active:false,internalAvailable:false,received:0,error:null});
+ useEffect(()=>{if(!offlineEnabled)return;const off=subscribeSync(setStatus);void printerConfig().then(p=>{if(p){setSelected(p);setWidth(String(p.width));setEncoding(String(p.codePage));setMode(p.transport||'bluetooth');}});let mounted=true;const refresh=()=>{void receiverStatus().then(s=>{if(mounted)setReceiver(s);}).catch(()=>{});};refresh();const timer=setInterval(refresh,2000);return ()=>{mounted=false;off();clearInterval(timer);};},[]);
  if(!offlineEnabled)return null;
- const persist=async(p:Printer,w=width,e=encoding)=>{const config={...p,width:Number(w) as 58|80,codePage:Number(e),charset:e==='0'?'IBM437':e==='16'?'windows-1252':'IBM850'};await savePrinter(config);setSelected(config);};
+ const persist=async(p:Printer,w=width,e=encoding)=>{const config={...p,transport:mode,width:mode==='h10s'?58:Number(w) as 58|80,codePage:Number(e),charset:e==='0'?'IBM437':e==='16'?'windows-1252':'IBM850'} as PrinterConfig;await savePrinter(config);setSelected(config);};
+ const selectedHere=selected&&(selected.transport||'bluetooth')===mode;
  return <>
   <Card>
    <Text style={styles.h2}>Datos de este dispositivo</Text>
@@ -38,19 +41,30 @@ export function DeviceSettings({run,busy}:{run:Run;busy:boolean}){
    <Text style={styles.hint}>La sincronización automática se intenta cada 30 segundos con la app abierta, al recuperar conexión y en segundo plano cuando Android lo permite. No borres los datos de la app si hay operaciones pendientes.</Text>
   </Card>
   <Card>
-   <Text style={styles.h2}>Impresora Bluetooth</Text>
-   <Text style={styles.body}>Empareja la impresora desde Ajustes de Android y selecciónala aquí. Esta conexión utiliza Bluetooth Classic con ESC/POS.</Text>
+   <Text style={styles.h2}>Impresión</Text>
+   <Choice items={[{id:'bluetooth',name:'Impresora externa'},{id:'h10s',name:'Neotek por Bluetooth'},...(receiver.internalAvailable?[{id:'internal',name:'Integrada H10S'}]:[])]} value={mode} onChange={v=>{setMode(v as typeof mode);setPrinters([]);if(v==='internal')run(async()=>{await useInternalPrinter();setSelected(await printerConfig());setWidth('58');},'Impresora integrada seleccionada');}}/>
+   <Text style={styles.body}>{mode==='h10s'?'Sin internet: empareja el celular y la Neotek desde Ajustes de Bluetooth. En la Neotek activa «Recibir tickets» y mantenla con Venta POS abierta. Selecciona la H10S aquí.':mode==='internal'?'Imprime directamente en la térmica integrada de esta H10S, sin internet.':'Empareja la impresora desde Ajustes de Android y selecciónala aquí. Esta conexión utiliza Bluetooth Classic con ESC/POS.'}</Text>
    {!printerAvailable&&<Banner tone="orange" text="Instala el APK propio para habilitar Bluetooth. Expo Go no incluye este módulo."/>}
-   <Button title="Ver impresoras emparejadas" icon="bluetooth" variant="secondary" disabled={busy||!printerAvailable} onPress={()=>run(async()=>{const list=await pairedPrinters();setPrinters(list);if(!list.length)throw new Error('No hay dispositivos emparejados. Abre Ajustes de Android y empareja la impresora.');})}/>
+   {mode!=='internal'&&<Button title="Ver equipos emparejados" icon="bluetooth" variant="secondary" disabled={busy||!printerAvailable} onPress={()=>run(async()=>{const list=await pairedPrinters();setPrinters(list);if(!list.length)throw new Error('No hay equipos emparejados. Abre Ajustes de Bluetooth de Android y empareja los equipos.');})}/>}
    {printers.map(p=><Button key={p.address} title={`${p.name} · ${p.address}`} variant={selected?.address===p.address?'primary':'outline'} disabled={busy} onPress={()=>run(()=>persist(p),'Impresora seleccionada')}/>)}
-   {!!selected&&<Text style={styles.body}>Seleccionada: {selected.name}</Text>}
+   {!!selectedHere&&<Text style={styles.body}>Seleccionada: {selected!.name}</Text>}
+   {mode==='bluetooth'?<>
    <Text style={styles.label}>Papel</Text>
-   <Choice items={[{id:'58',name:'58 mm'},{id:'80',name:'80 mm'}]} value={width} onChange={w=>{setWidth(w);if(selected)run(()=>persist(selected,w));}}/>
+   <Choice items={[{id:'58',name:'58 mm'},{id:'80',name:'80 mm'}]} value={width} onChange={w=>{setWidth(w);if(selectedHere)run(()=>persist(selected!,w));}}/>
    <Text style={styles.label}>Tabla de caracteres de la impresora</Text>
-   <Choice items={[{id:'2',name:'PC850'},{id:'0',name:'PC437'},{id:'16',name:'Windows 1252'}]} value={encoding} onChange={e=>{setEncoding(e);if(selected)run(()=>persist(selected,width,e));}}/>
-   <Text style={styles.hint}>Verifica acentos y ñ con el autotest de tu impresora. En un terminal con impresora integrada puede ser necesario el SDK de su fabricante.</Text>
-   <Button title="Imprimir prueba" icon="printer" disabled={busy||!selected||!printerAvailable} onPress={()=>run(testPrinter,'Prueba enviada a la impresora')}/>
+   <Choice items={[{id:'2',name:'PC850'},{id:'0',name:'PC437'},{id:'16',name:'Windows 1252'}]} value={encoding} onChange={e=>{setEncoding(e);if(selectedHere)run(()=>persist(selected!,width,e));}}/>
+   <Text style={styles.hint}>Verifica acentos y ñ con el autotest de tu impresora.</Text>
+   </>:<Text style={styles.hint}>Papel de 58 mm. Ambos equipos deben tener esta versión de Venta POS.</Text>}
+   <Button title="Imprimir prueba" icon="printer" disabled={busy||!selectedHere||!printerAvailable} onPress={()=>run(testPrinter,'Prueba enviada a la impresora')}/>
   </Card>
+  {receiver.internalAvailable&&<Card>
+   <Text style={styles.h2}>Recibir tickets por Bluetooth</Text>
+   <Text style={styles.body}>Usa esta Neotek como impresora del celular. Empareja primero los dos equipos en Ajustes de Bluetooth. No necesitas Wi-Fi ni internet.</Text>
+   <Banner tone={receiver.active?'green':'gray'} text={receiver.active?`Recibiendo tickets · ${receiver.received} enviados a la impresora`:'Recepción detenida'}/>
+   {!!receiver.error&&<Banner tone="orange" text={receiver.error}/>}
+   <Button title={receiver.active?'Detener recepción':'Activar recepción'} icon="bluetooth" disabled={busy} onPress={()=>run(async()=>{setReceiver(receiver.active?await stopReceiver():await startReceiver());})}/>
+   <Text style={styles.hint}>Mantén Venta POS abierta. La pantalla permanecerá encendida mientras recibes tickets. Al salir de la app o bloquear el equipo se detiene la recepción; vuelve a activarla al regresar.</Text>
+  </Card>}
  </>;
 }
 export function CloudDevices({run,busy}:{run:Run;busy:boolean}){
@@ -60,9 +74,9 @@ export function CloudDevices({run,busy}:{run:Run;busy:boolean}){
   <Text style={styles.h2}>Dispositivos y conciliación</Text>
   <Text style={styles.body}>Consulta los equipos registrados, su última comunicación y las diferencias de inventario detectadas al recibir ventas sin conexión.</Text>
   <Button title="Consultar dispositivos" variant="secondary" disabled={busy} onPress={()=>run(load)}/>
-  {devices?.map(d=><View key={`${d.id}-${d.user_id}`} style={{gap:6}}><Text style={styles.body}>{d.name} · {d.username} · {d.revoked?'Revocado':'Autorizado'}</Text><Text style={styles.small}>{d.id} · {d.last_seen_at||'Sin sincronizar'}</Text>{!d.revoked&&<Button title="Revocar dispositivo" variant="outline" danger disabled={busy} onPress={()=>setRevoke(d.id)}/>}</View>)}
+  {devices?.map(d=><View key={`${d.id}-${d.user_id}`} style={{gap:6}}><Text style={styles.body}>{d.name} · {d.username} · {d.revoked?'Revocado':'Autorizado'}</Text><Text style={styles.small}>Última conexión: {d.last_seen_at||'Sin sincronizar'}</Text>{!d.revoked&&<Button title="Revocar dispositivo" variant="outline" danger disabled={busy} onPress={()=>setRevoke(d.id)}/>}</View>)}
   {issues?.stock_debts?.map((d:any)=><Banner key={d.product_id} tone="orange" text={`${d.name}: faltante de ${d.quantity_milli/1000}. Recuenta y ajusta existencias en Catálogo.`}/>)}
-  {issues?.issues?.slice(0,20).map((i:any)=><Text key={i.id} style={styles.small}>{i.detail.message} · venta {i.sale_id}</Text>)}
+  {issues?.issues?.slice(0,20).map((i:any)=><Text key={i.id} style={styles.small}>{i.detail.message}</Text>)}
   <Confirm visible={!!revoke} title="¿Revocar este dispositivo?" message="Su acceso a la nube se bloqueará. Si está sin conexión, conocerá el bloqueo al volver a comunicarse. Sus ventas locales no se borran." confirmText="Revocar" danger busy={busy} onCancel={()=>setRevoke(null)} onConfirm={()=>run(async()=>{await api(`/devices/${revoke}/revoke`,'POST',{});setRevoke(null);await load();})}/>
  </Card>;
 }

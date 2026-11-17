@@ -82,7 +82,7 @@ try{
  await id('tab-history').click();await expect(id('sale-row-1')).toBeVisible();await expect(id('history-total')).toContainText('1.522.000');await capture('historial');
  await page.getByRole('button',{name:'Efectivo',exact:true}).click();await expect(id('history-total')).toContainText('4.000');await expect(id('sale-row-1')).toHaveCount(0);
  await page.reload();await expect(page.getByText('Hola, Vendedora')).toBeVisible();await expect(id('stat-total')).toContainText('1.522.000');await capture('inicio');
- await id('tab-catalog').click();await capture('catalogo');
+ await id('tab-more').click();await id('menu-products').click();await capture('catalogo');
  // Cerrar sesión desde Perfil revoca el token.
  const previousToken=await page.evaluate(()=>sessionStorage.getItem('pos-token'));await id('profile-button').click();await capture('perfil-vendedor');await id('logout').click();await page.getByRole('button',{name:'Cerrar sesión'}).last().click();
  await expect(page.getByRole('button',{name:'Entrar'})).toBeVisible();if(await page.evaluate(()=>sessionStorage.getItem('pos-token'))!==null)throw new Error('La sesión local no se eliminó.');
@@ -94,7 +94,7 @@ try{
  await id('close-cash').fill('54.000');await page.getByRole('button',{name:/Coincide con lo registrado/}).click();await expect(page.getByText('Cuadra exacto').first()).toBeVisible();await capture('caja-cierre');
  await id('review-close').click();await page.getByRole('button',{name:'Confirmar cierre definitivo'}).click();await expect(id('closure-detail')).toBeVisible();await expect(page.getByText('Cierre #0001')).toBeVisible();await capture('cierre');
  await page.getByRole('button',{name:'Ver ventas incluidas'}).click();await expect(id('sale-row-1')).toBeVisible();
- await id('tab-catalog').click();await id('catalog-Gaseosa').click();await expect(id('catalog-stock')).toHaveValue('6');await capture('catalogo-editar');
+ await id('tab-more').click();await id('menu-products').click();await id('catalog-Gaseosa').click();await expect(id('catalog-stock')).toHaveValue('6');await capture('catalogo-editar');
  // Integrated route journey: code terminators, KG/UND, shared stock and seller collections.
  await page.getByRole('button',{name:'Cerrar',exact:true}).last().click();
  const route=await call('/routes',{name:'Ruta E2E'});

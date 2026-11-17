@@ -1,3 +1,5 @@
+import {InventoryScreen} from './src/InventoryScreen';
+import {RouteClosureScreen} from './src/RouteClosureScreen';
 import {RoutesScreen} from './src/RoutesScreen';
 import {ResultsScreen} from './src/ResultsScreen';
 import React,{useCallback,useEffect,useRef,useState} from 'react';
@@ -18,8 +20,12 @@ import {syncSummary,useSyncStatus} from './src/DeviceSettings';
 import {offlineEnabled,startSync,subscribeSync} from './src/offline/runtime';
 import {OperationsScreen} from './src/OperationsScreen';
 import {SettingsScreen} from './src/SettingsScreen';
+import {MenuScreen} from './src/MenuScreen';
 // Cinco pestañas caben desde 320 px. Vender es la acción principal (botón morado); la sección actual se marca con la barra superior y el texto.
-const tabs=[{id:'home',name:'Inicio',icon:'home'},{id:'cash',name:'Caja',icon:'inbox'},{id:'sale',name:'Vender',icon:'shopping-cart'},{id:'catalog',name:'Catálogo',icon:'package'},{id:'history',name:'Historial',icon:'clock'}] as const;
+// Lo diario queda a un toque; el resto de módulos vive en "Más", agrupado por tarea.
+const tabs=[{id:'home',name:'Inicio',icon:'home'},{id:'cash',name:'Caja',icon:'inbox'},{id:'sale',name:'Vender',icon:'shopping-cart'},{id:'history',name:'Historial',icon:'clock'},{id:'more',name:'Más',icon:'grid'}] as const;
+// Módulos que se abren desde "Más": marcan esa pestaña y el botón atrás regresa a ella.
+const moreTabs:Tab[]=['catalog','operations','routes','inventory','routeclose','results','settings'];
 export type Run=(fn:()=>Promise<void>,success?:string)=>void;
 export default function App(){return <SafeAreaProvider><Main/></SafeAreaProvider>;}
 function Main(){
@@ -39,8 +45,8 @@ function Main(){
   const results=await Promise.all([api<Product[]>('/products'),api<Customer[]>('/customers'),api<PayPlatform[]>('/platforms'),api<CashSession[]>('/cash-sessions'),api<Settings>('/settings')]);setProducts(results[0]);setCustomers(results[1]);setPlatforms(results[2]);setSessions(results[3]);setSettings(results[4]);
  },[]);
  useEffect(()=>{void restoreSession().then(async u=>{if(u){setUser(u);await refresh();}}).catch(e=>setError({text:e.message,detail:e instanceof ApiError?e.detail:undefined})).finally(()=>setBoot(false));},[]);
- // Botón atrás de Android: primero cierra hojas/subpantallas, luego vuelve a Inicio y solo entonces sale.
- useHardwareBack(()=>{if(user&&tab!=='home'){setTab('home');return true;}return false;});
+ // Botón atrás de Android: primero cierra hojas/subpantallas, luego vuelve a Más (desde sus módulos) o a Inicio, y solo entonces sale.
+ useHardwareBack(()=>{if(user&&moreTabs.includes(tab)){setTab('more');return true;}if(user&&tab!=='home'){setTab('home');return true;}return false;});
  useEffect(()=>{if(!user||!offlineEnabled)return;const stop=startSync();let last:string|null=null;const unsubscribe=subscribeSync(s=>{if(!s.running&&s.last_sync&&s.last_sync!==last){last=s.last_sync;void refresh().catch(()=>{});}});return ()=>{stop();unsubscribe();};},[user?.id,refresh]);
  const own=sessions.find(s=>s.opened_by===user?.id&&s.state==='open'&&(offlineEnabled||!s.device_id));
  function go(target:Tab){setError(null);setTab(target);}
@@ -67,8 +73,6 @@ function Main(){
    <Pressable testID="cash-status" accessibilityRole="button" accessibilityLabel={own?'Caja abierta, ver caja':'Caja cerrada, abrir caja'} onPress={()=>go('cash')} style={[local.cashPill,{backgroundColor:own?colors.greenSoft:colors.orangeSoft}]}>
     {width>=400&&<Feather name={own?'unlock':'lock'} size={13} color={own?colors.greenDark:colors.orange}/>}<Text numberOfLines={1} style={[local.cashText,{color:own?colors.greenDark:colors.orange}]}>{own?`Caja${own.number?' #'+own.number:''}`:'Sin caja'}</Text>
    </Pressable>
-   <Pressable accessibilityRole="button" accessibilityLabel="Cuentas por cobrar" onPress={()=>go('operations')} style={[local.iconTap,tab==='operations'&&{backgroundColor:colors.accentSoft}]}><Feather name="credit-card" size={20} color={tab==='operations'?colors.accent:colors.ink}/></Pressable>
-   <Pressable accessibilityRole="button" accessibilityLabel="Rutas e inventario" onPress={()=>go('routes')} style={local.iconTap}><Feather name="map" size={20} color={colors.ink}/></Pressable>
    <Pressable testID="profile-button" accessibilityRole="button" accessibilityLabel="Mi perfil y configuración" onPress={()=>go('settings')} style={[local.avatar,tab==='settings'&&{borderColor:colors.accent,borderWidth:2}]}>
     <Text style={local.avatarText}>{initials(user.name)}</Text>
    </Pressable>
@@ -77,19 +81,22 @@ function Main(){
   <View style={{flex:1}}>
    <ProgressBar active={busy}/>
    {errorBanner}
-   {tab==='home'&&<HomeScreen user={user} sessions={sessions} busy={busy} run={run} refresh={refresh} go={go} onHistory={()=>history()} onCatalog={catalog}/>}
+   {tab==='home'&&<HomeScreen user={user} route={route} sessions={sessions} busy={busy} run={run} refresh={refresh} go={go} onHistory={()=>history()} onCatalog={catalog}/>}
+   {tab==='more'&&<MenuScreen user={user} route={route} go={go} onCatalog={catalog}/>}
    {/* Vender permanece montada: el carrito no se pierde al cambiar de pestaña. */}
    <View style={{flex:tab==='sale'?1:0,display:tab==='sale'?'flex':'none'}}><SaleScreen route={route} userId={user.id} active={tab==='sale'} session={own} products={products} customers={customers} platforms={platforms} paperWidth={Platform.OS==='android'?58:settings.paper_width} refresh={refresh} run={run} busy={busy} onViewSale={s=>history(s)} onOpenCash={()=>go('cash')} onFlowChange={setFlow}/></View>
    {tab==='cash'&&<CashScreen sessions={sessions} user={user} refresh={refresh} run={run} busy={busy} onClosure={c=>history(null,c)} onHistory={id=>history(null,null,id)} onSell={()=>go('sale')}/>}
-   {tab==='catalog'&&<CatalogScreen key={catalogVersion} initialTab={catalogTab} products={products} customers={customers} user={user} run={run} refresh={refresh} busy={busy}/>}
+   {tab==='catalog'&&<CatalogScreen key={catalogVersion} onBack={()=>go('more')} initialTab={catalogTab} products={products} customers={customers} user={user} run={run} refresh={refresh} busy={busy}/>}
    {tab==='history'&&<HistoryScreen key={historyVersion} user={user} settings={settings} run={run} busy={busy} initialSale={sale} initialClosure={closure} sessionFilter={sessionFilter} clearInitial={()=>{setSale(null);setClosure(null);}} customers={customers} sessions={sessions}/>}
-   {tab==='operations'&&<OperationsScreen user={user} products={products} customers={customers} session={own} run={run} busy={busy} refresh={refresh}/>}
-   {tab==='routes'&&<RoutesScreen user={user} products={products} customers={customers} run={run} busy={busy} refresh={refresh}/>}
-   {tab==='results'&&user.role==='admin'&&<ResultsScreen run={run} busy={busy}/>}
-   {tab==='settings'&&<SettingsScreen user={user} settings={settings} platforms={platforms} run={run} refresh={refresh} busy={busy} logout={logout}/>}
+   {tab==='operations'&&<OperationsScreen onBack={()=>go('more')} user={user} products={products} customers={customers} session={own} run={run} busy={busy} refresh={refresh}/>}
+   {tab==='routes'&&<RoutesScreen onBack={()=>go('more')} user={user} run={run} busy={busy}/>}
+   {tab==='inventory'&&<InventoryScreen onBack={()=>go('more')} user={user} products={products} customers={customers} run={run} busy={busy} refresh={refresh}/>}
+   {tab==='routeclose'&&<RouteClosureScreen onBack={()=>go('more')} user={user} run={run} busy={busy} refresh={refresh}/>}
+   {tab==='results'&&user.role==='admin'&&<ResultsScreen onBack={()=>go('more')} run={run} busy={busy}/>}
+   {tab==='settings'&&<SettingsScreen onBack={()=>go('more')} user={user} settings={settings} platforms={platforms} run={run} refresh={refresh} busy={busy} logout={logout}/>}
    {!!toast&&<Toast text={toast}/>}
   </View>
-  {showNav&&<View style={styles.nav} accessibilityRole="tablist">{tabs.map(t=>{const on=tab===t.id;const center=t.id==='sale';return <Pressable key={t.id} testID={`tab-${t.id}`} accessibilityRole="tab" accessibilityLabel={t.name} accessibilityState={{selected:on}} onPress={()=>t.id==='history'?history():go(t.id)} style={({pressed})=>[styles.navItem,pressed&&{backgroundColor:colors.subtle}]}>
+  {showNav&&<View style={styles.nav} accessibilityRole="tablist">{tabs.map(t=>{const on=tab===t.id||(t.id==='more'&&moreTabs.includes(tab));const center=t.id==='sale';return <Pressable key={t.id} testID={`tab-${t.id}`} accessibilityRole="tab" accessibilityLabel={t.name} accessibilityState={{selected:on}} onPress={()=>t.id==='history'?history():go(t.id)} style={({pressed})=>[styles.navItem,pressed&&{backgroundColor:colors.subtle}]}>
    <View style={[local.indicator,on&&{backgroundColor:colors.accent}]}/>
    {center?<View style={local.sellIcon}><Feather name={t.icon} size={20} color="white"/></View>:<View style={[local.navPill,on&&{backgroundColor:colors.accentSoft}]}><Feather name={t.icon} size={20} color={on?colors.accent:colors.muted}/></View>}
    <Text numberOfLines={1} style={[styles.navText,center&&{color:colors.ink,fontWeight:'700'},on&&{color:colors.accentDark,fontWeight:'800'}]}>{t.name}</Text>
@@ -111,7 +118,6 @@ const local=StyleSheet.create({
  syncStrip:{flexDirection:'row',alignItems:'center',gap:6,paddingHorizontal:12,paddingVertical:5,backgroundColor:colors.subtle,borderBottomWidth:1,borderBottomColor:colors.line},
  cashPill:{flexDirection:'row',alignItems:'center',gap:4,paddingHorizontal:9,minHeight:36,borderRadius:999,flexShrink:0},
  cashText:{fontSize:13,fontWeight:'700'},
- iconTap:{width:42,height:44,borderRadius:21,alignItems:'center',justifyContent:'center'},
  avatar:{width:40,height:40,borderRadius:20,backgroundColor:colors.accentDark,alignItems:'center',justifyContent:'center',flexShrink:0},
  avatarText:{color:'white',fontWeight:'800',fontSize:14},
  bannerWrap:{paddingHorizontal:16,paddingTop:10,width:'100%',maxWidth:720,alignSelf:'center'},

@@ -4,12 +4,12 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as Print from 'expo-print';
 import type {User} from './types';
-import {printerConfig,printText} from './printing/printer';
+import {printerConfig,printText,stopReceiver} from './printing/printer';
 import {ticketLines} from './printing/receipt';
 let token='';
 export {API_URL,ApiError} from './transport';
 import {API_URL,ApiError,remote} from './transport';
-import {activateLocal,restoreLocal,forgetLocal,localRequest,localDocument,offlineEnabled,syncNow,readDraftRequest,saveDraftRequest,cacheLegacySale} from './offline/runtime';
+import {activateLocal,restoreLocal,forgetLocal,localRequest,localDocument,offlineEnabled,syncNow,readDraftRequest,saveDraftRequest,cacheLegacySale,cachedPrintRecord} from './offline/runtime';
 let currentUser:User|null=null;
 export async function api<T>(path:string,method='GET',body?:unknown):Promise<T>{
  if(offlineEnabled&&currentUser){const local=await localRequest(currentUser,path,method,body);if(local.handled)return local.value as T;}
@@ -28,9 +28,15 @@ export async function restoreSession():Promise<User|null>{
 export async function signIn(username:string,password:string){
  const result=await api<{token:string;user:User}>('/auth/login','POST',{username,password});token=result.token;
  if(offlineEnabled)await activateLocal(result.user,token);
+ if(Platform.OS==='web'){
+  const {generation}=await remote<{generation:string}>('/data-generation');
+  const key='pos-generation-'+API_URL,previous=localStorage.getItem(key)||'initial';
+  if(previous!==generation)for(const pendingKey of Object.keys(localStorage))if(pendingKey.startsWith('pos-pending-'))localStorage.removeItem(pendingKey);
+  localStorage.setItem(key,generation);
+ }
  if(Platform.OS==='web')sessionStorage.setItem('pos-token',token);else await SecureStore.setItemAsync('pos-token',token);currentUser=result.user;return result.user;
 }
-export async function forgetSession(){currentUser=null;token='';if(offlineEnabled)await forgetLocal();if(Platform.OS==='web')sessionStorage.removeItem('pos-token');else await SecureStore.deleteItemAsync('pos-token');}
+export async function forgetSession(){if(Platform.OS==='android')await stopReceiver();currentUser=null;token='';if(offlineEnabled)await forgetLocal();if(Platform.OS==='web')sessionStorage.removeItem('pos-token');else await SecureStore.deleteItemAsync('pos-token');}
 export async function signOut(){if(offlineEnabled){try{await remote('/auth/logout','POST',{},token,3000);}catch{}await forgetSession();return;}await api('/auth/logout','POST',{});await forgetSession();}
 /** Descarga el PDF guardado de la venta/cierre (nunca se recalcula) y lo abre, comparte o imprime. */
 export async function documentAction(path:string,width:58|80,action:'share'|'print'|'open'){
@@ -46,7 +52,7 @@ export async function documentAction(path:string,width:58|80,action:'share'|'pri
   if(action!=='print'||!window.open(uri,'_blank')){const a=document.createElement('a');a.href=uri;a.download=name;a.click();}
   setTimeout(()=>URL.revokeObjectURL(uri),60000);return;
  }
- if(action==='print'&&await printerConfig()){const record=await api<any>(path);const config=await printerConfig();await printText(ticketLines(record,path.startsWith('/sales/')?'sale':'closure',config!.width).join('\n')+'\n',true);return;}
+ if(action==='print'&&await printerConfig()){const record=await cachedPrintRecord(path)||await api<any>(path);const config=await printerConfig();await printText(ticketLines(record,path.startsWith('/sales/')?'sale':'closure',config!.width).join('\n')+'\n',true);return;}
  const result=await FileSystem.downloadAsync(url,FileSystem.cacheDirectory+name,{headers:{Authorization:`Bearer ${token}`}});
  if(result.status!==200)throw new ApiError('No se pudo descargar el comprobante. Revisa la conexión e inténtalo nuevamente.',result.status,`HTTP ${result.status} · GET ${path}/pdf`);
  if(action==='print')await Print.printAsync({uri:result.uri});

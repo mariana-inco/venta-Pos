@@ -17,15 +17,16 @@ const PAGE = 30;
 export function SaleScreen({route,userId, active, session, products:rawProducts, customers, platforms, paperWidth, refresh, run, busy, onViewSale, onOpenCash, onFlowChange}: Props) {
   const [cart, setCart] = useState<CartLine[]>([]), [query, setQuery] = useState(''), [limit, setLimit] = useState(PAGE), [view, setView] = useState<SaleView>('catalog');
   const [customer, setCustomer] = useState(''), [pickCustomer, setPickCustomer] = useState(false), [customerSearch, setCustomerSearch] = useState(''), [newCustomer, setNewCustomer] = useState(false), [name, setName] = useState(''), [city, setCity] = useState('');
+  const [draft,setDraft]=useState<any>(null),[hasInitial,setHasInitial]=useState(false),[initialMethod,setInitialMethod]=useState('cash'),[reference,setReference]=useState(''),[mixed,setMixed]=useState<{method:string;amount:string;reference:string}[]>([{method:'cash',amount:'',reference:''}]),[referenceErrors,setReferenceErrors]=useState<string[]>([]),[checkedRefs,setCheckedRefs]=useState('');
   const [agents,setAgents]=useState<Agent[]>([]),[agent,setAgent]=useState(''),[newType,setNewType]=useState('normal');
   useEffect(()=>{if(active)run(async()=>setAgents(await api<Agent[]>('/agents')));},[active,userId]);
   const customerType=customers.find(c=>c.id===customer)?.customer_type||'normal';
-  const products=useMemo(()=>rawProducts.filter(p=>p.active&&p.stock_milli!==null&&p.stock_milli>0).map(p=>({...p,price_cents:customerType==='wholesale'?p.wholesale_price_cents||0:p.price_cents})),[rawProducts,customerType]);
+  const products=useMemo(()=>rawProducts.filter(p=>p.active&&p.stock_milli!==null&&p.stock_milli>0).map(p=>({...p,price_cents:draft?(draft.prices[p.id]?.price_cents||0):customerType==='wholesale'?p.wholesale_price_cents||0:p.price_cents})),[rawProducts,customerType,draft]);
   const [editing, setEditing] = useState<Product | null>(null), [qtyText, setQtyText] = useState('');
   const [pay, setPay] = useState(''), [received, setReceived] = useState('');
   const [ready, setReady] = useState(false), [pending, setPending] = useState<Record<string, unknown> | null>(null), [done, setDone] = useState<{sale: Sale; change: number | null} | null>(null);
   // Bloqueo síncrono: un doble toque no alcanza a crear dos ventas aunque React aún no haya deshabilitado el botón.
-  const confirming = useRef(false);
+  const confirming = useRef(false),startingDraft=useRef(false);
   const [scanMessage,setScanMessage]=useState('');
   useEffect(()=>{void enableScanner(active).catch(e=>setScanMessage(e.message));return ()=>{void enableScanner(false).catch(()=>{});};},[active]);
   useEffect(()=>{const subscription=onBarcode(code=>{if(!active)return;if(editing||pickCustomer||view==='pay'||done||pending){setScanMessage('Confirma o cierra el formulario actual antes de escanear el siguiente producto.');return;}const p=products.find(p=>p.active&&p.codes?.some(c=>c.code.toLowerCase()===code.trim().toLowerCase()));if(p){setScanMessage('');setView('catalog');openQuantity(p);}else{setQuery(code);setScanMessage(`No hay un producto con el código ${code}.`);}});return ()=>subscription?.remove();},[active,editing,pickCustomer,view,done,pending,products,cart,agent,customer]);
@@ -54,23 +55,29 @@ export function SaleScreen({route,userId, active, session, products:rawProducts,
   });
   const total = lines.reduce((sum, l) => sum + l.subtotal, 0);
   const linesOk = lines.length > 0 && lines.every(l => l.milli !== null && !l.short);
-  const method = pay === 'credit'?'credit':pay === 'cash' ? 'cash' : pay ? 'electronic' : '';
+  const method = pay==='mixed'?'mixed':pay === 'credit'?'credit':pay === 'cash' ? 'cash' : pay ? 'electronic' : '';
   const receivedCents = received.trim() ? moneyToCents(received) : null;
   const receivedError = method === 'cash' && received.trim() ? (receivedCents === null ? 'Escribe un valor válido, por ejemplo 50.000' : receivedCents < total ? `Faltan ${cop(total - receivedCents)}` : null) : null;
-  const initialCents=initialPayment.trim()?moneyToCents(initialPayment):0;
-  const valid = !!route && !!agent && !!session && !!customer && linesOk && !!method && (method==='credit'||!receivedError);
+  const initialCents=hasInitial?(initialPayment.trim()?moneyToCents(initialPayment):null):0;
+  const mixedEntered=mixed.reduce((n,p)=>n+(moneyToCents(p.amount)||0),0);
+  const refs=method==='mixed'?mixed.filter(p=>p.method!=='cash').map(p=>({platform_id:p.method,reference:p.reference})):method==='electronic'?[{platform_id:pay,reference}]:method==='credit'&&hasInitial&&initialMethod!=='cash'?[{platform_id:initialMethod,reference}]:[];
+  const refsKey=JSON.stringify(refs);
+  useEffect(()=>{if(!refs.length){setReferenceErrors([]);setCheckedRefs(refsKey);return;}let live=true;const timer=setTimeout(()=>{Promise.all(refs.map(async p=>{if(!p.reference.trim())return 'Ingresa la referencia de cada pago electrónico.';const r=await api<{duplicate:boolean}>('/payment-reference?'+new URLSearchParams(p));return r.duplicate?'Referencia ya registrada para este medio.':'';})).then(raw=>{const errors:string[]=raw;if(live){const keys=refs.map(p=>p.platform_id+'/'+p.reference.normalize('NFKC').replace(/\s/g,'').toUpperCase());if(new Set(keys).size<keys.length)errors.push('Hay referencias repetidas en las líneas de pago.');setReferenceErrors(errors.filter(Boolean));setCheckedRefs(refsKey);}}).catch(()=>{if(live){setReferenceErrors(['No se pudo verificar la referencia. Revisa la conexión.']);setCheckedRefs(refsKey);}});return ()=>{live=false;};},250);return ()=>{live=false;clearTimeout(timer);};},[refsKey]);
+  const referencesOk=!refs.length||(refs.every(p=>p.reference.trim())&&checkedRefs===refsKey&&!referenceErrors.length);
+
+  const valid = !!draft && referencesOk && (method!=='mixed'||(mixedEntered===total&&mixed.every(p=>(moneyToCents(p.amount)||0)>0))) && (method!=='credit'||(initialCents!==null&&initialCents>=0&&initialCents<=total&&(!hasInitial||initialCents>0))) && !!route && !!agent && !!session && !!customer && linesOk && !!method && (method==='credit'||!receivedError);
   const inCart = (id: string) => lines.find(l => l.product.id === id);
 
   const visible = useMemo(() => {
     const q = normalizeSearch(query);
-    if(!q||!agent||!customer)return [];
+    if(!q||!draft||!agent||!customer)return [];
     const exact=products.filter(p=>p.active&&p.codes?.some(c=>normalizeSearch(c.code)===q));if(exact.length)return exact;
     return products.filter(p => p.active && (normalizeSearch(p.name).includes(q)||p.codes?.some(c=>normalizeSearch(c.code).includes(q))));
   }, [products, query,agent,customer]);
   const customerMatches = useMemo(() => {
     const q = normalizeSearch(customerSearch);
-    return customers.filter(c => !q || normalizeSearch(c.name).includes(q) || normalizeSearch(c.city).includes(q)).slice(0, 40);
-  }, [customers, customerSearch]);
+    return customers.filter(c => (c.route_id===route?.id||c.routes?.some(r=>r.id===route?.id))&&(!q || normalizeSearch(c.name).includes(q) || normalizeSearch(c.city).includes(q))).slice(0, 40);
+  }, [customers, customerSearch,route?.id]);
 
   function setLine(product: Product, quantity: string) {
     setCart(c => c.some(l => l.product.id === product.id) ? c.map(l => l.product.id === product.id ? {...l, quantity} : l) : [...c, {product, quantity}]);
@@ -91,13 +98,14 @@ export function SaleScreen({route,userId, active, session, products:rawProducts,
   const editShort = editing && editMilli !== null && editing.stock_milli !== null && editMilli + cart.filter(l=>editing.group_id?l.product.group_id===editing.group_id:l.product.id===editing.id).reduce((n,l)=>n+(parseQuantity(l.quantity,l.product.unit)||0),0)> editing.stock_milli;
   function saveQuantity() { if (editing && editMilli !== null && !editShort) { setLine(editing, quantityText(editMilli+(inCart(editing.id)?.milli||0))); setEditing(null);setQuery(''); } }
 
-  function reset() {setCredit(false);setInitialPayment(''); setCart([]); setPay(''); setReceived(''); setView('catalog'); setQuery(''); setCustomer(''); setLimit(PAGE); }
+  async function chooseCustomer(id:string){if(startingDraft.current)return;if(draft)throw new Error('El cliente está fijo. Inicia una venta nueva para cambiarlo.');startingDraft.current=true;try{const d=await api<any>('/sale-drafts','POST',{customer_id:id,agent_id:agent,request_key:Crypto.randomUUID()});setDraft(d);setCustomer(id);setPickCustomer(false);}finally{startingDraft.current=false;}}
+  function reset() {setDraft(null);setHasInitial(false);setReference('');setMixed([{method:'cash',amount:'',reference:''}]);setCredit(false);setInitialPayment(''); setCart([]); setPay(''); setReceived(''); setView('catalog'); setQuery(''); setCustomer(''); setLimit(PAGE); }
   async function confirm() {
     if (confirming.current) return;
     if (!valid && !pending) throw new Error('Completa el cliente, las cantidades y el método de pago antes de confirmar.');
     confirming.current = true;
     try {
-      const body = pending || {agent_id:agent,cash_received:!credit&&method==='cash'&&receivedCents!==null?String(receivedCents/100):undefined,credit:method==='credit',initial_payment:undefined,session_id: session!.id, customer_id: customer, items: lines.map(l => ({product_id: l.product.id, quantity: quantityForApi(l.milli!), expected_price_cents: l.product.price_cents})), method, platform_id: method === 'electronic' ? pay : null, request_key: Crypto.randomUUID()};
+      const body = pending || {draft_id:draft.id,agent_id:agent,cash_received:!credit&&method==='cash'&&receivedCents!==null?String(receivedCents/100):undefined,credit:method==='credit',initial_payment:method==='credit'&&hasInitial?String((initialCents||0)/100):undefined,initial_method:initialMethod==='cash'?'cash':'electronic',initial_platform_id:initialMethod!=='cash'?initialMethod:undefined,reference:refs.length&&method!=='mixed'?reference:undefined,payments:method==='mixed'?mixed.map(p=>({method:p.method==='cash'?'cash':'electronic',platform_id:p.method==='cash'?null:p.method,reference:p.method==='cash'?undefined:p.reference,amount:String((moneyToCents(p.amount)||0)/100)})):undefined,session_id: session!.id, customer_id: customer, items: lines.map(l => ({product_id: l.product.id, quantity: quantityForApi(l.milli!), expected_price_cents: l.product.price_cents})), method, platform_id: method === 'electronic' ? pay : null, request_key: draft.id};
       // La referencia se guarda antes de enviar: si se cae la conexión, el reintento no duplica la venta.
       await savePending(userId, body); setPending(body);
       let sale: Sale;
@@ -169,18 +177,19 @@ export function SaleScreen({route,userId, active, session, products:rawProducts,
         <Button title="Cobrar" icon="arrow-right" size="lg" style={{flexShrink: 1, paddingHorizontal: 20}} disabled={!agent||!customer||!linesOk} onPress={() => setView('pay')} testID="checkout"/>
       </FooterBar>;
 
-  const customerCard = <Pressable accessibilityRole="button" accessibilityLabel={selectedCustomer ? `Cliente ${selectedCustomer.name}, cambiar` : 'Seleccionar cliente'} onPress={() => { setPickCustomer(true); setCustomerSearch(''); setNewCustomer(false); }} testID="customer-picker"
+  const customerCard = <Pressable accessibilityRole="button" accessibilityLabel={selectedCustomer ? `Cliente ${selectedCustomer.name}, fijo` : 'Seleccionar cliente'} disabled={!!draft} onPress={() => { setPickCustomer(true); setCustomerSearch(''); setNewCustomer(false); }} testID="customer-picker"
     style={({pressed}) => [{flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 52, paddingHorizontal: 12, borderRadius: 12, backgroundColor: colors.white, borderWidth: 1, borderColor: selectedCustomer ? colors.line : colors.lineStrong, borderStyle: selectedCustomer ? 'solid' : 'dashed'}, pressed && {backgroundColor: colors.subtle}]}>
     <Feather name="user" size={18} color={selectedCustomer ? colors.ink : colors.muted}/>
     <View style={{flex: 1, minWidth: 0}}>
       {selectedCustomer ? <Text numberOfLines={1} style={[styles.body, {color: colors.ink, fontWeight: '700'}]}>{selectedCustomer.name}<Text style={[styles.small, {fontWeight: '400'}]}> · {selectedCustomer.city}</Text></Text>
         : <Text style={[styles.body, {color: colors.text}]}>Cliente <Text style={styles.small}>· obligatorio</Text></Text>}
     </View>
-    <Text style={styles.link}>{selectedCustomer ? 'Cambiar' : 'Elegir'}</Text>
+    <Text style={styles.link}>{selectedCustomer ? 'Fijo' : 'Elegir'}</Text>
   </Pressable>;
 
   return <>
     <Page footer={footer} testID="sale-screen">
+      {draft&&<Button title="Cancelar venta e iniciar otra" variant="ghost" onPress={()=>setClearCart(true)}/>}
       {!!scanMessage&&<Banner tone="orange" text={scanMessage} onClose={()=>setScanMessage('')}/>}
       {view === 'pay' ? <>
         <Pressable accessibilityRole="button" onPress={() => setView('catalog')} style={[styles.row, {justifyContent: 'flex-start', gap: 6, minHeight: 44}]} hitSlop={8}><Feather name="arrow-left" size={18} color={colors.accentDark}/><Text style={styles.link}>Seguir agregando productos</Text></Pressable>
@@ -200,14 +209,18 @@ export function SaleScreen({route,userId, active, session, products:rawProducts,
         <Card>
           <Text style={styles.sectionTitle}>Método de pago</Text>
           <View style={[styles.wrap, {gap: 10}]}>
-            {[{id:'credit',name:'Crédito',icon:'clock' as const},{id: 'cash', name: 'Efectivo', icon: 'dollar-sign' as const}, ...platforms.filter(p => p.active).map(p => ({id: p.id, name: p.name, icon: 'smartphone' as const}))].map(m => {
+            {[{id:'mixed',name:'Varios',icon:'layers' as const},{id:'credit',name:'Crédito',icon:'clock' as const},{id: 'cash', name: 'Efectivo', icon: 'dollar-sign' as const}, ...platforms.filter(p => p.active).map(p => ({id: p.id, name: p.name, icon: 'smartphone' as const}))].map(m => {
               const on = pay === m.id;
-              return <Pressable key={m.id} accessibilityRole="radio" accessibilityLabel={m.name} accessibilityState={{checked: on}} onPress={() => {setPay(m.id);setCredit(m.id==='credit');}}
+              return <Pressable key={m.id} accessibilityRole="radio" accessibilityLabel={m.name} accessibilityState={{checked: on}} onPress={() => {setPay(m.id);setReference('');setCredit(m.id==='credit');}}
                 style={[{flexGrow: 1, flexBasis: '45%', minHeight: 56, borderRadius: 12, borderWidth: on ? 2 : 1, borderColor: on ? colors.accent : colors.lineStrong, backgroundColor: on ? colors.accentSoft : colors.white, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12}]}>
                 <Feather name={on ? 'check-circle' : m.icon} size={18} color={on ? colors.accentDark : colors.muted}/><Text numberOfLines={2} style={{flex: 1, fontWeight: '700', color: colors.ink, fontSize: 14}}>{m.name}</Text>
               </Pressable>;
             })}
           </View>
+          {method==='credit'&&<><View style={styles.row}><Text style={styles.label}>Registrar abono inicial</Text><Switch accessibilityLabel="Registrar abono inicial" value={hasInitial} onValueChange={setHasInitial}/></View>{hasInitial&&<><Field label="Abono inicial" kind="decimal" value={initialPayment} onChange={setInitialPayment}/><SearchSelect label="Medio del abono inicial" items={[{id:'cash',name:'Efectivo'},...platforms.filter(p=>p.active)]} value={initialMethod} onChange={v=>{setInitialMethod(v);setReference('');}}/></>}<Text style={styles.h2}>Saldo pendiente: {cop(total-(initialCents||0))}</Text></>}
+          {(method==='electronic'||(method==='credit'&&hasInitial&&initialMethod!=='cash'))&&<Field label="Referencia de pago" value={reference} onChange={setReference} required/>}
+          {method==='mixed'&&<>{mixed.map((p,i)=><Card key={i}><SearchSelect label={`Medio de pago ${i+1}`} items={[{id:'cash',name:'Efectivo'},...platforms.filter(x=>x.active)]} value={p.method} onChange={v=>setMixed(mixed.map((x,j)=>i===j?{...x,method:v,reference:''}:x))}/><Field label={`Importe ${i+1}`} kind="decimal" value={p.amount} onChange={v=>setMixed(mixed.map((x,j)=>i===j?{...x,amount:v}:x))}/>{p.method!=='cash'&&<Field label={`Referencia de pago ${i+1}`} value={p.reference} onChange={v=>setMixed(mixed.map((x,j)=>i===j?{...x,reference:v}:x))} required/>}<Button title="Quitar pago" variant="ghost" onPress={()=>setMixed(mixed.filter((_,j)=>j!==i))}/></Card>)}<Button title="Agregar medio de pago" variant="outline" onPress={()=>setMixed([...mixed,{method:'cash',amount:'',reference:''}])}/><Text style={styles.body}>Total factura: {cop(total)}</Text><Text style={styles.body}>Total ingresado: {cop(mixedEntered)}</Text><Text style={mixedEntered===total?styles.h2:styles.fieldError}>{mixedEntered>total?'Excedente: ':'Pendiente: '}{cop(Math.abs(total-mixedEntered))}</Text></>}
+          {referenceErrors.map((error,i)=><Text key={i} style={styles.fieldError}>{error}</Text>)}
           {method === 'cash' && !credit && <View style={{gap: 10}}>
             <Field label="Valor recibido (opcional)" kind="decimal" prefix="$" value={received} onChange={setReceived} placeholder={cop(total).replace('$', '').trim()} error={receivedError} hint="Escríbelo o toca un billete para calcular el cambio." testID="cash-received"/>
             <Choice items={cashSuggestions(total).map(v => ({id: String(v), name: v === total ? 'Exacto' : cop(v)}))} value={receivedCents !== null ? String(receivedCents) : ''} onChange={v => setReceived(String(Number(v) / 100))}/>
@@ -219,7 +232,7 @@ export function SaleScreen({route,userId, active, session, products:rawProducts,
         <Text style={[styles.small, {textAlign: 'center'}]}>Al confirmar, el sistema verifica precios, existencias y caja, y genera el comprobante.</Text>
       </> : <>
         {route&&<View style={[styles.row, {justifyContent: 'flex-start', gap: 6}]}><Feather name="map-pin" size={14} color={colors.muted}/><Text numberOfLines={2} style={[styles.small, {flex: 1}]}>Ruta {route.name} · ventas y abonos se confirman con conexión</Text></View>}
-        <SearchSelect label="1. Vendedor" items={agents} value={agent} onChange={id=>{setAgent(id);setCustomer('');}}/>
+        <SearchSelect label="1. Vendedor" items={agents} value={agent} disabled={!!draft} onChange={id=>{setAgent(id);setCustomer('');}}/>
         {!agents.length&&<Banner text="El administrador debe asociar vendedores a tu usuario."/>}
         {!!agent&&customerCard}
         {!!customer&&<Text style={styles.hint}>Precio automático: {customerType==='wholesale'?'Mayorista':'Normal'}</Text>}
@@ -264,11 +277,11 @@ export function SaleScreen({route,userId, active, session, products:rawProducts,
             {l.milli === null && <Text accessibilityRole="alert" style={styles.fieldError}>{l.product.unit === 'kg' ? 'Escribe el peso, por ejemplo 0,25 o 1,5' : 'Escribe una cantidad entera mayor a cero'}</Text>}
             {l.short && <Text style={styles.fieldError}>Solo hay {quantityLabel(l.product.stock_milli!, l.product.unit)} disponibles</Text>}
           </Card>)}
-          {lines.length > 0 && view === 'cart' && <Button title="Vaciar venta" icon="x" variant="ghost" onPress={() => setClearCart(true)} style={{alignSelf: 'center'}}/>}
+
       </>}
     </Page>
 
-    <Confirm visible={clearCart} title="¿Vaciar la venta?" message={`Se quitarán los ${lines.length} productos agregados. La venta todavía no se ha registrado.`} confirmText="Vaciar venta" danger onCancel={() => setClearCart(false)} onConfirm={() => { setCart([]); setClearCart(false); }}/>
+    <Confirm visible={clearCart} title="¿Cancelar esta venta?" message={`Se quitarán los ${lines.length} productos agregados. La venta todavía no se ha registrado.`} confirmText="Iniciar otra venta" danger onCancel={() => setClearCart(false)} onConfirm={() => { reset(); setClearCart(false); }}/>
     <Sheet visible={!!editing} onClose={() => setEditing(null)} title={editing?.name || ''} subtitle={editing ? `${cop(editing.price_cents)} · ${editing.unit === 'kg'?'¿Cuántos kilogramos desea vender?':'¿Cuántas unidades desea agregar?'}` : ''}
       footer={editing && <>
         <Button title={`Agregar · ${cop(editMilli ? lineSubtotal(editing.price_cents, editMilli) : 0)}`} icon="check" size="lg" disabled={editMilli === null || !!editShort} onPress={saveQuantity} testID="quantity-save"/>
@@ -284,17 +297,19 @@ export function SaleScreen({route,userId, active, session, products:rawProducts,
 
     <Sheet visible={pickCustomer} onClose={() => setPickCustomer(false)} title={newCustomer ? 'Nuevo cliente' : 'Elegir cliente'} subtitle={newCustomer ? 'Se guarda y queda seleccionado en esta venta' : undefined}
       footer={newCustomer ? <>
+        <SearchSelect label="Ruta del cliente (obligatoria)" items={route?[route]:[]} value={route?.id||''} disabled onChange={()=>{}}/>
         <Button title="Crear y seleccionar" icon="user-plus" size="lg" disabled={busy || !name.trim() || !city.trim()} loading={busy} testID="customer-create"
-          onPress={() => run(async () => { const c = await api<Customer>('/customers', 'POST', {name: name.trim(), city: city.trim(),customer_type:newType}); setCustomer(c.id); setNewCustomer(false); setPickCustomer(false); setName(''); setCity(''); await refresh(); }, 'Cliente guardado')}/>
+          onPress={() => run(async () => { const c = await api<Customer>('/customers', 'POST', {name: name.trim(), city: city.trim(),customer_type:newType,route_id:route!.id}); await chooseCustomer(c.id); setNewCustomer(false); setName(''); setCity(''); await refresh(); }, 'Cliente guardado')}/>
         <Button title="Volver a la lista" variant="ghost" onPress={() => setNewCustomer(false)}/>
       </> : <Button title="Crear cliente nuevo" icon="user-plus" variant="secondary" onPress={() => { setNewCustomer(true); setName(customerSearch.trim()); }} testID="customer-new"/>}>
       {newCustomer ? <>
+        <SearchSelect label="Ruta del cliente (obligatoria)" items={route?[route]:[]} value={route?.id||''} disabled onChange={()=>{}}/>
         <Field label="Nombre del cliente" kind="name" value={name} onChange={setName} autoFocus placeholder="Ej. Manuel Rodríguez"/>
         <Choice items={[{id:'normal',name:'Normal'},{id:'wholesale',name:'Mayorista'}]} value={newType} onChange={setNewType}/><Field label="Ciudad o municipio" kind="name" value={city} onChange={setCity} placeholder="Ej. El Rosal"/>
       </> : <>
         <SearchBar value={customerSearch} onChange={setCustomerSearch} placeholder="Buscar por nombre o ciudad" testID="customer-search"/>
         {customerMatches.length === 0 && <Text style={[styles.muted, {textAlign: 'center', paddingVertical: 12}]}>{customers.length ? 'Ningún cliente coincide. Créalo con el botón de abajo.' : 'Todavía no hay clientes. Crea el primero.'}</Text>}
-        <View>{customerMatches.map(c => <Pressable key={c.id} accessibilityRole="button" accessibilityLabel={`${c.name}, ${c.city}`} onPress={() => { setCustomer(c.id); setPickCustomer(false); }}
+        <View>{customerMatches.map(c => <Pressable key={c.id} accessibilityRole="button" accessibilityLabel={`${c.name}, ${c.city}`} onPress={() => run(()=>chooseCustomer(c.id))}
           style={({pressed}) => [{flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.line, minHeight: 56}, pressed && {backgroundColor: colors.accentSoft}]}>
           <View style={{width: 36, height: 36, borderRadius: 18, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center'}}><Text style={{fontWeight: '800', color: colors.accent}}>{c.name[0]?.toUpperCase()}</Text></View>
           <View style={{flex: 1}}><Text style={{fontSize: 15, fontWeight: '700', color: colors.ink}}>{c.name}</Text><Text style={styles.small}>{c.city}</Text></View>

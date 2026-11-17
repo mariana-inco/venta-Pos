@@ -32,6 +32,17 @@ export class LocalStore {
  put(kind,record){this.db.run('INSERT INTO local_records VALUES (?,?,?) ON CONFLICT(kind,id) DO UPDATE SET payload=excluded.payload',kind,record.id,JSON.stringify(record));return record;}
  profile(user){this.put('profile',user);}
  profiles(){return this.all('profile');}
+ reconcileGeneration(generation){
+  if(typeof generation!=='string'||!generation)fail('Estado del servidor inválido.');
+  const previous=this.meta('data_generation')||'initial';
+  if(previous===generation)return false;
+  this.tx(()=>{
+   // Explicit server-wide reset: all pending operations from the previous generation are obsolete.
+   const device=this.deviceId;
+   this.db.exec('DELETE FROM local_events; DELETE FROM local_records; DELETE FROM local_print_jobs; DELETE FROM local_meta;');
+   this.setMeta('device_id',device);this.setMeta('data_generation',generation);
+  });return true;
+ }
  applyCatalog(catalog){
   if(!catalog?.version||!Array.isArray(catalog.products)||!catalog.settings||!Number.isSafeInteger(catalog.ack_sequence))fail('Catálogo recibido inválido.');
   this.tx(()=>{

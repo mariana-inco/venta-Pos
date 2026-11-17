@@ -130,8 +130,9 @@ export function Badge({text, tone, good = true, icon}: {text: string; tone?: Ton
   const c = toneColors[tone || (good ? 'green' : 'orange')];
   return <View style={[styles.badge, {backgroundColor: c.bg}]}>{icon && <Feather name={icon} size={12} color={c.fg}/>}<Text numberOfLines={1} style={[styles.badgeText, {color: c.fg}]}>{text}</Text></View>;
 }
-export function Header({eyebrow, title, subtitle, right}: {eyebrow?: string; title: string; subtitle?: string; right?: React.ReactNode}) {
-  return <View style={[styles.row, {alignItems: 'center'}]}>
+export function Header({eyebrow, title, subtitle, right, onBack, backLabel = 'Volver'}: {eyebrow?: string; title: string; subtitle?: string; right?: React.ReactNode; onBack?: () => void; backLabel?: string}) {
+  return <View style={[styles.row, {alignItems: 'center', justifyContent: 'flex-start', gap: 8}]}>
+    {onBack && <IconButton icon="arrow-left" label={backLabel} onPress={onBack} size={40} testID="screen-back"/>}
     <View style={{flex: 1, gap: 2}}>{eyebrow && <Text style={styles.eyebrow}>{eyebrow}</Text>}<Text accessibilityRole="header" style={styles.title}>{title}</Text>{subtitle && <Text style={styles.muted}>{subtitle}</Text>}</View>
     {right}
   </View>;
@@ -215,6 +216,22 @@ export function Chip({text, on, onPress, icon}: {text: string; on: boolean; onPr
   return <Pressable accessibilityRole="button" accessibilityLabel={text} accessibilityState={{selected: on}} onPress={onPress} style={({pressed}) => [styles.chip, on && styles.chipOn, pressed && !on && {backgroundColor: colors.subtle}]}>
     {on ? <Feather name="check" size={14} color={colors.accentDark}/> : icon && <Feather name={icon} size={14} color={colors.text}/>}<Text numberOfLines={1} style={[styles.chipText, on && {color: colors.accentDark}]}>{text}</Text>
   </Pressable>;
+}
+/** Fila navegable: icono, título, descripción breve y un valor o insignia opcional a la derecha. */
+export function ListRow({icon, title, subtitle, value, right, onPress, tone = 'gray', testID}: {icon?: Icon; title: string; subtitle?: string; value?: string; right?: React.ReactNode; onPress?: () => void; tone?: Tone; testID?: string}) {
+  const c = toneColors[tone];
+  const body = <>
+    {icon && <View style={[styles.rowIcon, {backgroundColor: c.bg}]}><Feather name={icon} size={18} color={c.fg}/></View>}
+    <View style={{flex: 1, minWidth: 0, gap: 2}}>
+      <Text numberOfLines={2} style={[styles.h2, {fontSize: 16}]}>{title}</Text>
+      {!!subtitle && <Text numberOfLines={2} style={styles.small}>{subtitle}</Text>}
+    </View>
+    {!!value && <Text numberOfLines={1} style={[styles.money, {fontSize: 16, flexShrink: 0}]}>{value}</Text>}
+    {right}
+    {onPress && <Feather name="chevron-right" size={18} color={colors.muted}/>}
+  </>;
+  if (!onPress) return <View testID={testID} style={styles.listRow}>{body}</View>;
+  return <Pressable testID={testID} accessibilityRole="button" accessibilityLabel={title} onPress={onPress} style={({pressed}) => [styles.listRow, pressed && {backgroundColor: colors.subtle}]}>{body}</Pressable>;
 }
 export function Divider() { return <View style={styles.divider}/>; }
 /** Hoja inferior para formularios y selecciones rápidas. Botón atrás de Android la cierra. */
@@ -307,6 +324,8 @@ export const styles = StyleSheet.create({
   statValue: {fontSize: 19, fontWeight: '800', color: colors.ink, letterSpacing: -0.3, fontVariant: ['tabular-nums']},
   money: {fontVariant: ['tabular-nums'], fontWeight: '700', color: colors.ink},
   divider: {height: 1, backgroundColor: colors.line},
+  listRow: {flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 64, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line},
+  rowIcon: {width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexShrink: 0},
   link: {fontSize: 15, color: colors.accentDark, fontWeight: '700'},
   error: {backgroundColor: colors.redSoft, padding: 14, borderRadius: radius.md, color: colors.red, fontSize: 14, lineHeight: 20},
   empty: {alignItems: 'center', gap: 8, paddingVertical: 24, paddingHorizontal: 20, backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line},

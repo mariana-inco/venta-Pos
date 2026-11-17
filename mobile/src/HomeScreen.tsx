@@ -2,11 +2,11 @@ import {offlineEnabled} from './offline/runtime';
 import React from 'react';
 import {Pressable, Text, View, useWindowDimensions} from 'react-native';
 import {Feather} from '@expo/vector-icons';
-import {Button, IconButton, Page, Section, Stat, capitalize, colors, cop, fitSize, longToday, radius, styles, time} from './ui';
+import {Banner, Button, IconButton, ListRow, Page, Section, Stat, capitalize, colors, cop, fitSize, longToday, radius, styles, time} from './ui';
 import type {CashSession, Tab, User} from './types';
 import type {Run} from '../App';
-type Props = {user: User; sessions: CashSession[]; busy: boolean; run: Run; refresh: () => Promise<void>; go: (tab: Tab) => void; onHistory: () => void; onCatalog: (sub: 'products' | 'customers') => void};
-export function HomeScreen({user, sessions, busy, run, refresh, go, onHistory, onCatalog}: Props) {
+type Props = {user: User; route: {id: string; name: string} | null; sessions: CashSession[]; busy: boolean; run: Run; refresh: () => Promise<void>; go: (tab: Tab) => void; onHistory: () => void; onCatalog: (sub: 'products' | 'customers') => void};
+export function HomeScreen({user, route, sessions, busy, run, refresh, go, onHistory, onCatalog}: Props) {
   const {width} = useWindowDimensions();
   const own = sessions.find(s => s.opened_by === user.id && s.state === 'open' && (offlineEnabled || !s.device_id));
   const admin = user.role === 'admin';
@@ -14,22 +14,28 @@ export function HomeScreen({user, sessions, busy, run, refresh, go, onHistory, o
   const scope = admin ? sessions.filter(s => s.state === 'open') : own ? [own] : [];
   const sum = (key: 'total_cents' | 'cash_cents' | 'electronic_cents' | 'sale_count') => scope.reduce((n, s) => n + s[key], 0);
   const count = sum('sale_count');
-  const shortcuts = [
-    {name:'Rutas e inventario',icon:'map' as const,onPress:()=>go('routes')},
-    ...(admin?[{name:'Resultados y cierres',icon:'bar-chart-2' as const,onPress:()=>go('results')}]:[]),
-    {name: 'Cuentas por cobrar', icon: 'credit-card' as const, onPress: () => go('operations')},
-    {name: 'Historial', icon: 'clock' as const, onPress: onHistory},
-    {name: 'Productos', icon: 'package' as const, onPress: () => onCatalog('products')},
-    {name: 'Clientes', icon: 'users' as const, onPress: () => onCatalog('customers')},
+  // Solo las tareas frecuentes de cada rol; Historial ya está en la barra inferior y el resto en "Más".
+  const shortcuts = admin ? [
+    {name: 'Inventarios y entregas', hint: 'Entrega diaria y ajustes', icon: 'archive' as const, onPress: () => go('inventory')},
+    {name: 'Resultados y cierres', hint: 'Ventas por ruta y vendedor', icon: 'bar-chart-2' as const, onPress: () => go('results')},
+    {name: 'Cuentas por cobrar', hint: 'Deudas y abonos', icon: 'credit-card' as const, onPress: () => go('operations')},
+    {name: 'Cierre de ruta', hint: 'Cerrar la jornada', icon: 'check-square' as const, onPress: () => go('routeclose')},
+  ] : [
+    {name: 'Cuentas por cobrar', hint: 'Registrar abonos', icon: 'credit-card' as const, onPress: () => go('operations')},
+    {name: 'Inventario de mi ruta', hint: 'Existencias disponibles', icon: 'archive' as const, onPress: () => go('inventory')},
+    {name: 'Clientes', hint: 'Consultar y crear', icon: 'users' as const, onPress: () => onCatalog('customers')},
+    {name: 'Cierre de ruta', hint: 'Al terminar el recorrido', icon: 'check-square' as const, onPress: () => go('routeclose')},
   ];
   return <Page onRefresh={() => run(refresh)} refreshing={false}>
     <View style={[styles.row, {gap: 8}]}>
       <View style={{flex: 1, minWidth: 0}}>
         <Text accessibilityRole="header" numberOfLines={1} style={[styles.h2, {fontSize: 18}]}>Hola, {user.name.split(' ')[0]}</Text>
-        <Text numberOfLines={1} style={styles.small}>{capitalize(longToday())}</Text>
+        <Text numberOfLines={1} style={styles.small}>{capitalize(longToday())}{route ? ` · ${route.name}` : ''}</Text>
       </View>
       <IconButton icon="refresh-cw" label="Actualizar resumen" onPress={() => run(refresh, 'Resumen actualizado')} disabled={busy} testID="refresh-home"/>
     </View>
+
+    {!admin && !route && <Banner tone="orange" title="No tienes una ruta asignada" text="Tus clientes, inventario y cierre dependen de la ruta. Pide al administrador que te asigne una."/>}
 
     {own
       ? <View testID="cash-open-card" style={{gap: 10}}>
@@ -68,13 +74,11 @@ export function HomeScreen({user, sessions, busy, run, refresh, go, onHistory, o
       {scope.length === 0 && <Text style={styles.small}>Los valores aparecen cuando hay una caja abierta.</Text>}
     </Section>
 
-    <Section title="Accesos">
+    <Section title="Accesos rápidos" action="Ver todo" onAction={() => go('more')}>
       <View style={[styles.wrap, {gap: 8}]}>
-        {shortcuts.map(s => <Pressable key={s.name} accessibilityRole="button" accessibilityLabel={s.name} onPress={s.onPress}
-          style={({pressed}) => [local.shortcut, {flexBasis: width >= 600 ? '22%' : '45%'}, pressed && {backgroundColor: colors.subtle}]}>
-          <Feather name={s.icon} size={18} color={colors.ink}/>
-          <Text numberOfLines={1} style={{flex: 1, fontSize: 15, fontWeight: '600', color: colors.ink}}>{s.name}</Text>
-        </Pressable>)}
+        {shortcuts.map(s => <View key={s.name} style={{flexGrow: 1, flexBasis: width >= 600 ? '45%' : '100%'}}>
+          <ListRow icon={s.icon} tone="accent" title={s.name} subtitle={s.hint} onPress={s.onPress}/>
+        </View>)}
       </View>
     </Section>
   </Page>;
@@ -84,5 +88,4 @@ const local = {
   closed: {gap: 12, padding: 14, borderRadius: radius.lg, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.line, borderLeftWidth: 4, borderLeftColor: colors.orange},
   total: {gap: 12, padding: 14, borderRadius: radius.lg, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.line},
   count: {alignItems: 'flex-end' as const, paddingLeft: 8},
-  shortcut: {flexGrow: 1, flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10, minHeight: 52, backgroundColor: colors.white, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 12},
 };

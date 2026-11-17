@@ -1,3 +1,5 @@
+import {lockedSale} from './sale-drafts.js';
+import {salePayments,saveReference,paymentsFor} from './payments.js';
 import {typeFor,priced,agentsFor,requireOpenRoute,results,inventoryReport,dayOf} from './business.js';
 import {claimReceipt} from './receipt-numbers.js';
 import {routeFor,consumeRoute,balance} from './commerce.js';
@@ -26,7 +28,7 @@ export function saleDetail(db,user,saleId) {
  const sale=db.prepare('SELECT * FROM sales WHERE id=?').get(saleId);
  if(!sale) fail(404,'Venta no encontrada.');
  if(user.role!=='admin' && sale.seller_id!==user.id) fail(403,'No puedes consultar una venta ajena.');
- return {...sale,...balance(db,sale.id),terms:db.prepare('SELECT * FROM sale_terms WHERE sale_id=?').get(sale.id),session_number:sessionNumber(db,sale.session_id),snapshot:JSON.parse(sale.snapshot),items:db.prepare('SELECT * FROM sale_items WHERE sale_id=? ORDER BY rowid').all(saleId),payments:db.prepare('SELECT * FROM payments WHERE sale_id=?').all(saleId)};
+ return {...sale,...balance(db,sale.id),terms:db.prepare('SELECT * FROM sale_terms WHERE sale_id=?').get(sale.id),session_number:sessionNumber(db,sale.session_id),snapshot:JSON.parse(sale.snapshot),items:db.prepare('SELECT * FROM sale_items WHERE sale_id=? ORDER BY rowid').all(saleId),payments:paymentsFor(db,saleId)};
 }
 export function recordSale(db,user,input) {
  return transaction(db,()=>{
@@ -44,26 +46,21 @@ export function recordSale(db,user,input) {
   const customer=db.prepare('SELECT * FROM customers WHERE id=? AND active=1').get(input.customer_id);
   if(!customer) fail(400,'Selecciona un cliente activo.');
   if(route&&!db.prepare('SELECT 1 FROM customer_routes WHERE customer_id=? AND route_id=?').get(customer.id,route.id))fail(403,'El cliente no pertenece a tu ruta.');
-  const customerType=typeFor(db,customer.id);const credit=input.credit||input.method==='credit';
-  let platform=null;
-  if(input.method==='electronic') {
-   platform=db.prepare('SELECT * FROM platforms WHERE id=? AND active=1').get(input.platform_id||'');
-   if(!platform) fail(400,'Selecciona una plataforma electrónica activa.');
-  } else if(input.platform_id) fail(400,'Un pago en efectivo no debe tener plataforma.');
+  const draft=lockedSale(db,user,input,route);const customerType=draft.customer_type;
   const seen=new Set();
   const items=input.items.map(item=>{
    if(seen.has(item.product_id)) fail(400,'Agrupa la cantidad del producto repetido en una sola línea.');seen.add(item.product_id);
    const p=db.prepare('SELECT * FROM products WHERE id=? AND active=1').get(item.product_id);
    if(!p) fail(400,'Uno de los productos no está disponible.');
-   if(item.expected_price_cents!==undefined && item.expected_price_cents!==priced(db,p,customerType)) fail(409,`El precio de ${p.name} cambió. Actualiza los productos antes de confirmar.`);
+   const locked=draft.prices[p.id];if(!locked||!locked.price_cents||locked.unit!==p.unit)fail(409,`El producto ${p.name} no tiene un precio válido en esta venta. Inicia una venta nueva.`);
+   if(item.expected_price_cents!==undefined && item.expected_price_cents!==locked.price_cents) fail(409,`El precio de ${p.name} cambió. Actualiza los productos antes de confirmar.`);
    const qty=quantity(item.quantity,p.unit);
    if(!route && p.stock_milli!==null && p.stock_milli<qty) fail(409,`Existencias insuficientes: ${p.name}.`);
-   return {id:id(),product_id:p.id,name:p.name,unit:p.unit,quantity_milli:qty,price_cents:priced(db,p,customerType),subtotal_cents:subtotal(priced(db,p,customerType),qty),tracks_stock:!route&&p.stock_milli!==null};
+   return {id:id(),product_id:p.id,name:p.name,unit:p.unit,quantity_milli:qty,price_cents:locked.price_cents,subtotal_cents:subtotal(locked.price_cents,qty),tracks_stock:!route&&p.stock_milli!==null};
   });
   const total=items.reduce((sum,i)=>sum+i.subtotal_cents,0);
   if(!Number.isSafeInteger(total)||total>100_000_000_000) fail(400,'El total supera el límite permitido.');
-  const paid=credit?money(input.initial_payment||'0'):total;
-  if(paid>total)fail(400,'El abono inicial supera el total.');
+  const {credit,paid,lines:paymentLines}=salePayments(db,input,total);
   const received=input.cash_received===undefined?null:money(input.cash_received);
   if(received!==null&&(credit||input.method!=='cash'||received<total))fail(400,'El efectivo recibido debe cubrir la venta de contado.');
   const saleId=id(); const created=now();
@@ -79,7 +76,7 @@ export function recordSale(db,user,input) {
    db.prepare('INSERT INTO sale_items VALUES (?,?,?,?,?,?,?,?)').run(item.id,saleId,item.product_id,item.name,item.unit,item.quantity_milli,item.price_cents,item.subtotal_cents);
    if(item.tracks_stock){db.prepare('UPDATE products SET stock_milli=stock_milli-?,updated_at=? WHERE id=?').run(item.quantity_milli,created,item.product_id);db.prepare('INSERT INTO sale_stock_effects VALUES (?,?,?)').run(saleId,item.product_id,item.quantity_milli);}
   }
-  if(paid>0)db.prepare('INSERT INTO payments VALUES (?,?,?,?,?,?)').run(id(),saleId,input.method==='credit'?'cash':input.method,platform?.id||null,platform?.name||null,paid);
+  for(const p of paymentLines){const pid=id();db.prepare('INSERT INTO payments VALUES (?,?,?,?,?,?)').run(pid,saleId,p.method,p.platform_id,p.platform_name,p.amount_cents);if(p.method==='electronic')saveReference(db,{platform_id:p.platform_id,reference:p.reference,payment_id:pid});}
   audit(db,user.id,'sale.create',saleId,{session_id:session.id,total_cents:total});
   return saleDetail(db,user,saleId);
  });
@@ -89,11 +86,12 @@ export function closureDetail(db,closureId) {
  if(!closure) fail(404,'Cierre no encontrado.');
  return {...closure,session_number:sessionNumber(db,closure.session_id),snapshot:JSON.parse(closure.snapshot),annotations:db.prepare('SELECT n.*,u.name AS author_name FROM closure_notes n JOIN users u ON u.id=n.author_id WHERE closure_id=? ORDER BY n.created_at').all(closureId)};
 }
-export function closeSession(db,user,sessionId,input,offline=null) {
+export function closeSession(db,user,sessionId,input,offline=null,administrative=null) {
  if(user.role!=='admin') fail(403,'Solo el administrador puede cerrar la caja.');
  return transaction(db,()=>{
   const session=sessionFor(db,user,sessionId);
-  if(session.device_id && offline?.deviceId!==session.device_id) fail(409,'Cierra esta caja desde su dispositivo de origen para incluir todas las ventas sin conexión.');
+  if(administrative&&(!administrative.devices_synced||administrative.amounts!=='recorded'||offline))fail(400,'El cierre administrativo exige confirmar la sincronización y usar los saldos revisados.');
+  if(session.device_id && offline?.deviceId!==session.device_id&&!administrative) fail(409,'Cierra esta caja desde su dispositivo de origen para incluir todas las ventas sin conexión.');
   if(session.state!=='open') fail(409,'La caja ya está cerrada. Consulta su cierre en el historial.');
   const computed=totals(db,session.id);
   if(input.reviewed_sale_count!==undefined && input.reviewed_sale_count!==computed.sale_count) fail(409,'Se registraron ventas después de revisar la caja. Cancela y vuelve a abrir la conciliación con los totales actualizados.');
@@ -102,11 +100,12 @@ export function closeSession(db,user,sessionId,input,offline=null) {
   const created=offline?.createdAt||now(); const closureId=offline?.id||id();
   const number=db.prepare('SELECT COALESCE(MAX(number),0)+1 AS n FROM closures').get().n;
   const route=routeFor(db,{id:session.opened_by});
-  const snapshot={financial_details:results(db,{session_id:session.id}),inventory:route?inventoryReport(db,route.id,dayOf(session.opened_at),dayOf(created)):null,route_id:route?.id||null,route_name:route?.name||null,business_name:db.prepare('SELECT business_name FROM settings WHERE id=1').get().business_name,session_id:session.id,
+  const snapshot={financial_details:results(db,{session_id:session.id}),route_id:route?.id||null,route_name:route?.name||null,business_name:db.prepare('SELECT business_name FROM settings WHERE id=1').get().business_name,session_id:session.id,
    opened_at:session.opened_at,closed_at:created,opened_by:session.opened_by,opener_name:session.opener_name,admin_name:user.name,
    opening_cents:session.opening_cents,...computed,expected_cash_cents:expectedCash,declared_cash_cents:declaredCash,declared_electronic_cents:declaredElectronic,
    cash_difference_cents:declaredCash-expectedCash,electronic_difference_cents:declaredElectronic-computed.electronic_cents,
    ...(offline?{ticket_number:offline.ticketNumber,device_id:offline.deviceId}:{}),
+   ...(administrative?{close_mode:'administrative_recorded_totals',origin_device_id:session.device_id,physical_count_reported:false,devices_synced_confirmed_by:user.id,administrative_request_key:administrative.request_key,administrative_reason:administrative.reason}:{}),
    total_difference_cents:declaredCash-expectedCash+declaredElectronic-computed.electronic_cents,notes:input.notes};
   db.prepare('INSERT INTO closures VALUES (?,?,?,?,?,?)').run(closureId,number,session.id,user.id,created,JSON.stringify(snapshot));
   db.prepare("UPDATE cash_sessions SET state='closed',closed_at=? WHERE id=? AND state='open'").run(created,session.id);

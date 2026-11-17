@@ -1,23 +1,26 @@
-import React, {useMemo, useState} from 'react';
+import {SearchSelect} from './SearchSelect';
+import React, {useEffect,useMemo, useState} from 'react';
 import {Pressable, Switch, Text, View} from 'react-native';
 import {Feather} from '@expo/vector-icons';
 import {api} from './api';
 import {Badge, Button, Choice, Confirm, Empty, Field, Header, Page, SearchBar, Segmented, Sheet, colors, cop, moneyInput, moneyToCents, normalizeMoney, normalizeSearch, parseQuantity, quantityForApi, quantityLabel, quantityText, styles} from './ui';
 import type {Product, Customer, User} from './types';
 import type {Run} from '../App';
-type Props = {products: Product[]; customers: Customer[]; user: User; run: Run; refresh: () => Promise<void>; busy: boolean; initialTab?: 'products' | 'customers'};
+type Props = {products: Product[]; customers: Customer[]; user: User; run: Run; refresh: () => Promise<void>; busy: boolean; initialTab?: 'products' | 'customers'; onBack?: () => void};
 const PAGE = 40;
 
-export function CatalogScreen({products, customers, user, run, refresh, busy, initialTab}: Props) {
+export function CatalogScreen({products, customers, user, run, refresh, busy, initialTab, onBack}: Props) {
   const admin = user.role === 'admin';
   const [tab, setTab] = useState<'products' | 'customers'>(initialTab || (admin ? 'products' : 'customers')), [query, setQuery] = useState(''), [status, setStatus] = useState('active'), [limit, setLimit] = useState(PAGE);
   const [editing, setEditing] = useState<string | null>(null), [name, setName] = useState(''), [price, setPrice] = useState(''), [unit, setUnit] = useState<'unit' | 'kg'>('unit'), [active, setActive] = useState(true), [tracks, setTracks] = useState(false), [stock, setStock] = useState(''), [city, setCity] = useState('');
+  const [routes,setRoutes]=useState<{id:string;name:string;active:number}[]>([]),[customerRoute,setCustomerRoute]=useState('');useEffect(()=>{run(async()=>setRoutes(await api('/routes')));},[]);
   const [wholesale,setWholesale]=useState(''),[customerType,setCustomerType]=useState('normal');
   const [codes,setCodes]=useState<{code:string;kind:'internal'|'barcode'}[]>([]);
   const [deactivate, setDeactivate] = useState<{id: string; name: string} | null>(null);
   const isProducts = tab === 'products';
 
   function open(item: Product | Customer | null) {
+    setCustomerRoute(item&&'city' in item?item.route_id||'':routes.length===1?routes[0].id:'');
     setCodes(item&&'price_cents' in item?item.codes||[]:[]);
     setWholesale(item&&'price_cents' in item&&item.wholesale_price_cents?moneyInput(item.wholesale_price_cents):'');setCustomerType(item&&'city' in item?item.customer_type||'normal':'normal');
     setEditing(item ? item.id : 'new'); setName(item?.name || '');
@@ -30,9 +33,9 @@ export function CatalogScreen({products, customers, user, run, refresh, busy, in
   const errors = isProducts
     ? {price: price && (priceCents === null || priceCents <= 0) ? 'Escribe un precio válido, por ejemplo 12.000' : null, stock: tracks && stock && stockMilli === null ? (unit === 'unit' ? 'Solo unidades enteras' : 'Usa coma para decimales: 12,5') : null}
     : {price: null, stock: null};
-  const canSave = isProducts ? codes.some(c=>c.code.trim()) && !!name.trim() && priceCents !== null && priceCents > 0 && (!wholesale.trim()||!!moneyToCents(wholesale)) : !!name.trim() && !!city.trim();
+  const canSave = isProducts ? codes.some(c=>c.code.trim()) && !!name.trim() && priceCents !== null && priceCents > 0 && (!wholesale.trim()||!!moneyToCents(wholesale)) : !!name.trim() && !!city.trim()&&!!customerRoute;
   async function save() {
-    const body = isProducts ? {code:codes[0]?.code.trim(),name:name.trim(),price:normalizeMoney(price),wholesale_price:wholesale.trim()?normalizeMoney(wholesale):null,unit,active,expected_updated_at:products.find(p=>p.id===editing)?.updated_at} : {name:name.trim(),city:city.trim(),customer_type:customerType};
+    const body = isProducts ? {code:codes[0]?.code.trim(),name:name.trim(),price:normalizeMoney(price),wholesale_price:wholesale.trim()?normalizeMoney(wholesale):null,unit,active,expected_updated_at:products.find(p=>p.id===editing)?.updated_at} : {name:name.trim(),city:city.trim(),customer_type:customerType,route_id:customerRoute};
     await api(`/${tab}${editing && editing !== 'new' ? '/' + editing : ''}`, editing === 'new' ? 'POST' : 'PUT', body);
     setEditing(null); await refresh();
   }
@@ -45,7 +48,7 @@ export function CatalogScreen({products, customers, user, run, refresh, busy, in
   const canCreate = admin || !isProducts;
 
   return <Page onRefresh={() => run(refresh)}>
-    <Header title="Catálogo"/>
+    <Header title="Catálogo" onBack={onBack} backLabel="Volver a Más"/>
     <Segmented items={[{id: 'products', name: `Productos (${products.filter(p => p.active).length})`}, {id: 'customers', name: `Clientes (${customers.length})`}]} value={tab} onChange={v => { setTab(v as typeof tab); setQuery(''); setLimit(PAGE); }} testID="catalog-tabs"/>
     <View style={[styles.row, {gap: 8}]}>
       <View style={{flex: 1}}><SearchBar value={query} onChange={t => { setQuery(t); setLimit(PAGE); }} placeholder={isProducts ? 'Buscar producto' : 'Buscar cliente o ciudad'}/></View>
@@ -98,7 +101,7 @@ export function CatalogScreen({products, customers, user, run, refresh, busy, in
           <View style={{flex: 1}}><Text style={styles.label}>Disponible para la venta</Text><Text style={styles.hint}>Los inactivos no aparecen en Vender; su historial se conserva.</Text></View>
           <Switch accessibilityLabel="Disponible para la venta" value={active} onValueChange={setActive} trackColor={{true: colors.accent, false: colors.lineStrong}} thumbColor={colors.white}/>
         </View>
-      </> : <><Text style={styles.label}>Tipo de cliente (obligatorio)</Text><Choice items={[{id:'normal',name:'Normal'},{id:'wholesale',name:'Mayorista'}]} value={customerType} onChange={setCustomerType}/><Field label="Ciudad o municipio" kind="name" value={city} onChange={setCity} placeholder="Ej. El Rosal" testID="catalog-city"/></>}
+      </> : <><SearchSelect label="Ruta del cliente (obligatoria)" items={routes.filter(r=>r.active)} value={customerRoute} onChange={setCustomerRoute}/><Text style={styles.label}>Tipo de cliente (obligatorio)</Text><Choice items={[{id:'normal',name:'Normal'},{id:'wholesale',name:'Mayorista'}]} value={customerType} onChange={setCustomerType}/><Field label="Ciudad o municipio" kind="name" value={city} onChange={setCity} placeholder="Ej. El Rosal" testID="catalog-city"/></>}
     </Sheet>
     <Confirm visible={!!deactivate} title={`¿Desactivar “${deactivate?.name}”?`} message={isProducts ? 'Dejará de aparecer en Vender. Las ventas anteriores no cambian y puedes reactivarlo después.' : 'Dejará de aparecer en la lista de clientes. Las ventas anteriores conservan su nombre.'}
       confirmText="Desactivar" danger busy={busy} onCancel={() => setDeactivate(null)}

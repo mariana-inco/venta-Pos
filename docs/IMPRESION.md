@@ -66,4 +66,24 @@ Referencias: https://docs.expo.dev/versions/v58.0.0/sdk/print/ y https://docs.ex
 
 ## Actualización Neotek H10S
 
-El modelo objetivo confirmado es Neotek H10S Android 13. Ver [diagnóstico y límites de integración](ACTUALIZACION-H10S.md). El módulo Bluetooth existente no acredita compatibilidad con la impresora interna. El PDF por ruta conserva 58 mm físicos y altura dinámica; la impresión integrada requiere identificar el servicio Android o SDK del proveedor y verificar papel real.
+### Envío desde otro Android por Bluetooth (1.2.1)
+
+La H10S conectada por USB se identificó como Android H10S y tiene instalado `recieptservice.com.recieptservice` 8.3.6. Se contrastaron descriptor, firmas y primeros once códigos de transacción AIDL con el APK instalado. El módulo ahora puede enlazar ese servicio para imprimir texto Unicode y logo y recibir comprobantes desde otro Android. Esto acredita el servicio de esta unidad; no identifica todos los firmwares vendidos como Neotek.
+
+1. Actualizar **los dos equipos** al APK 1.2.1 o superior, conservando los datos.
+2. Emparejar el celular y la H10S en Ajustes de Bluetooth de Android; aceptar el código en ambos.
+3. En la H10S: Perfil → **Recibir tickets por Bluetooth** → **Activar recepción**. Mantener Venta POS abierta. La app mantiene la pantalla encendida; al salir de ella o bloquear el equipo se detiene la recepción y hay que activarla de nuevo.
+4. En el celular: Perfil → Impresión → **Neotek por Bluetooth** → **Ver equipos emparejados** → seleccionar la H10S → **Imprimir prueba**.
+5. Para imprimir directamente desde la H10S, seleccionar **Integrada H10S**. La opción **Impresora externa** conserva el transporte SPP/ESC-POS anterior.
+
+El enlace entre los Android usa RFCOMM seguro con un UUID propio y acepta equipos previamente emparejados. No requiere Wi-Fi, datos móviles ni servidor para transportar el ticket. Los comprobantes de venta guardados en el celular se leen de su caché local antes de consultar la API; si el documento solo existe en el servidor, sigue siendo necesaria la conexión para obtenerlo. Esta mejora de impresión no cambia las reglas de conexión de ventas por ruta, cartera o consulta de datos.
+
+Cada envío lleva un UUID y una huella del contenido. La H10S registra el trabajo en SQLite antes de tocar papel; el mismo UUID no se vuelve a imprimir, incluso tras reiniciar la app. Una interrupción conserva estado desconocido. No hay reintentos automáticos: comprobar el papel antes de solicitar una nueva impresión. «Enviado» significa que el servicio aceptó los comandos, no que un sensor haya confirmado la salida física. El logo se reduce a 192 puntos antes de viajar por Bluetooth.
+
+Verificación: compilación release Android, comprobación TypeScript y cinco pruebas JVM del protocolo (Unicode, mensajes consecutivos, límites y truncamiento). En la H10S se verificaron actualización con la misma firma y conservación de sesión, detección del servicio y activación real del receptor. El usuario confirmó que la prueba física con logo, acentos y texto salió y se lee bien.
+
+El Samsung SM-S928B (Android 17) se actualizó de 1.1.5 a 1.2.1 sin desinstalar y conservó la sesión de vendedor. Se seleccionó la H10S emparejada en **Neotek por Bluetooth**. Se envió una prueba con Wi-Fi y datos móviles apagados; la app mostró «Prueba enviada a la impresora» y el usuario confirmó que el nuevo ticket salió y se lee bien en la H10S. Se restauraron los datos móviles a su estado anterior (Wi-Fi ya estaba apagado). Ambas instalaciones quedaron configuradas. Esta prueba acredita el transporte Bluetooth y la salida física, sin crear una venta; no amplía las reglas offline del resto de la aplicación.
+
+APK: `output/dok-pollo-mc-1.2.1-neotek-bluetooth.apk` (versionCode 9), SHA-256 `2f2e182d2ec711f2a9b94c19aa7d465d75eb9a34151044ac019fe616d6dff7f3`.
+
+El diagnóstico previo, antes de conectar esta unidad por USB, está en [ACTUALIZACION-H10S.md](ACTUALIZACION-H10S.md). El PDF por ruta conserva 58 mm físicos y altura dinámica. La integración 1.2.1 descrita arriba incorpora el servicio interno identificado en esta unidad; otras variantes de firmware requieren comprobarlo de nuevo.

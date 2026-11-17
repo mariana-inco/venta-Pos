@@ -130,7 +130,7 @@ export function HistoryScreen({user, settings, run, busy, initialSale, initialCl
       {!!c.notes && <Text style={styles.body}>Observaciones: {c.notes}</Text>}
     </Card>
     {c.financial_details&&<Card><Text style={styles.h2}>Ventas por vendedor y cobros</Text>{c.financial_details.by_seller.map((s:any)=><View key={s.user_id+'/'+s.agent_id}><Text style={styles.h2}>{s.seller_name} · {s.user_name}</Text><FinancialSummary value={s}/></View>)}<FinancialSummary value={c.financial_details}/></Card>}
-    {c.inventory&&<Card><Text style={styles.h2}>Inventario histórico de la ruta</Text><InventorySummary value={c.inventory}/></Card>}
+
     <Button title="Ver ventas incluidas" icon="list" variant="secondary" onPress={() => { setActiveSession(closure.session_id); setPeriod('all'); setClosure(null); setTab('sales'); }}/>
     <Card>
       <Text style={styles.sectionTitle}>Documento del cierre</Text>
@@ -195,7 +195,7 @@ export function HistoryScreen({user, settings, run, busy, initialSale, initialCl
         </View>
         {showGroups && admin && <Card style={{gap: 8, paddingVertical: 12}}>
           <Choice items={[{id: 'method', name: 'Pago'}, {id: 'platform', name: 'Plataforma'}, {id: 'seller', name: 'Vendedor'}, {id: 'customer', name: 'Cliente'}, {id: 'date', name: 'Fecha'}]} value={group} onChange={setGroup}/>
-          {page.groups[group]?.map((g, i) => <InfoRow key={i} label={`${group === 'customer' ? customerName(g.key || '') || g.key : group === 'seller' ? sellers.find(s => s.id === g.key)?.name || g.key : g.key === 'credit'?'Crédito':g.key === 'cash' ? 'Efectivo' : g.key === 'electronic' ? 'Electrónico' : g.key || 'Efectivo'} · ${g.count}`} value={cop(g.total_cents)}/>)}
+          {page.groups[group]?.map((g, i) => <InfoRow key={i} label={`${group === 'customer' ? customerName(g.key || '') || 'Cliente no disponible' : group === 'seller' ? sellers.find(s => s.id === g.key)?.name || 'Usuario no disponible' : g.key === 'mixed'?'Varios':g.key === 'credit'?'Crédito':g.key === 'cash' ? 'Efectivo' : g.key === 'electronic' ? 'Electrónico' : g.key || 'Efectivo'} · ${g.count}`} value={cop(g.total_cents)}/>)}
         </Card>}
       </View>}
 

@@ -1,3 +1,4 @@
+import {prepareRequest} from './business-fixtures.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -9,7 +10,7 @@ test('Rutas, códigos, inventario compartido, crédito, abonos, reversión y anu
  const db=openDatabase(':memory:');const tokens={};
  for(const role of ['admin','seller','other']){await createUser(db,{username:role,name:role,role:role==='admin'?'admin':'seller',password:'password-12345678'});tokens[role]=(await login(db,role,'password-12345678')).token;}
  const server=createApp(db).listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));
- const request=async(path,body,role='admin',method=body?'POST':'GET',status=200)=>{const r=await fetch(`http://127.0.0.1:${server.address().port}/api${path}`,{method,headers:{Authorization:`Bearer ${tokens[role]}`,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});const result=await r.json();assert.equal(r.status,status,JSON.stringify(result));return result;};
+ const request=async(path,body,role='admin',method=body?'POST':'GET',status=200)=>{body=prepareRequest(db,tokens[role],path,body);const r=await fetch(`http://127.0.0.1:${server.address().port}/api${path}`,{method,headers:{Authorization:`Bearer ${tokens[role]}`,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});const result=await r.json();assert.equal(r.status,status,JSON.stringify(result));return result;};
  try{
  const users=await request('/users');const seller=users.find(u=>u.username==='seller'),other=users.find(u=>u.username==='other');
  const r1=await request('/routes',{name:'Ruta 1'}),r2=await request('/routes',{name:'Ruta 2'});
@@ -25,7 +26,7 @@ test('Rutas, códigos, inventario compartido, crédito, abonos, reversión y anu
  const group=await request('/inventory-groups',{name:'POLLO',unit:'kg'}),units=await request('/inventory-groups',{name:'GASEOSA',unit:'unit'});
  for(const p of [whole,breast])await request(`/products/${p.id}/group`,{group_id:group.id},'admin','PUT');
  await request(`/products/${soda.id}/group`,{group_id:group.id},'admin','PUT',400);await request(`/products/${soda.id}/group`,{group_id:units.id},'admin','PUT');
- for(const r of [r1,r2])for(const g of [group,units])await request('/inventory',{route_id:r.id,group_id:g.id,quantity:g.id===group.id?'1000':'100',kind:'assign',note:'Carga inicial',expected_available_milli:0});
+ for(const r of [r1,r2])await request('/deliveries',{route_id:r.id,items:[{product_id:whole.id,quantity:'1000'},{product_id:soda.id,quantity:'100'}],note:'Carga inicial',request_key:randomUUID()});
  const session=await request('/cash-sessions',{opening:'0'},'seller','POST',201);
  const sell=(items,extra={})=>({agent_id:agent.id,session_id:session.id,customer_id:customer.id,items,method:'cash',request_key:randomUUID(),...extra});
  const first=await request('/sales',sell([{product_id:whole.id,quantity:'300'},{product_id:breast.id,quantity:'200'}],{credit:true,initial_payment:'150000'}),'seller','POST',201);
@@ -55,7 +56,7 @@ test('Rutas, códigos, inventario compartido, crédito, abonos, reversión y anu
  const summary=await request(`/cash-sessions/${session.id}`,undefined,'seller');assert.equal(summary.cash_cents,485500000);
  assert.equal((await request('/collections?method=cash')).length,3);assert.ok(db.prepare("SELECT COUNT(*) n FROM audit WHERE action='collection.reverse'").get().n);
  // Two distinct concurrent invoices compete for the same shared balance.
- const race=await Promise.all([fetch(`http://127.0.0.1:${server.address().port}/api/sales`,{method:'POST',headers:{Authorization:`Bearer ${tokens.seller}`,'Content-Type':'application/json'},body:JSON.stringify(sell([{product_id:whole.id,quantity:'400'}]))}),fetch(`http://127.0.0.1:${server.address().port}/api/sales`,{method:'POST',headers:{Authorization:`Bearer ${tokens.seller}`,'Content-Type':'application/json'},body:JSON.stringify(sell([{product_id:breast.id,quantity:'400'}]))})]);
+ const race=await Promise.all([fetch(`http://127.0.0.1:${server.address().port}/api/sales`,{method:'POST',headers:{Authorization:`Bearer ${tokens.seller}`,'Content-Type':'application/json'},body:JSON.stringify(prepareRequest(db,tokens.seller,'/sales',sell([{product_id:whole.id,quantity:'400'}])))}),fetch(`http://127.0.0.1:${server.address().port}/api/sales`,{method:'POST',headers:{Authorization:`Bearer ${tokens.seller}`,'Content-Type':'application/json'},body:JSON.stringify(prepareRequest(db,tokens.seller,'/sales',sell([{product_id:breast.id,quantity:'400'}])))})]);
  assert.deepEqual(race.map(r=>r.status).sort(),[201,409]);
  const available=(await request('/inventory',undefined,'seller')).stock.find(s=>s.group_id===group.id).available_milli;
  assert.equal(available,197500);

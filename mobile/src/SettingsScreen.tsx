@@ -4,10 +4,10 @@ import {Pressable, Switch, Text, View} from 'react-native';
 import {Feather} from '@expo/vector-icons';
 import {DeviceSettings,CloudDevices} from './DeviceSettings';
 import {api, API_URL} from './api';
-import {Badge, Button, Card, Choice, Confirm, Divider, Field, Logo, Page, Segmented, colors, date, initials, styles} from './ui';
+import {Badge, Button, Card, Choice, Confirm, Divider, Field, Header, Logo, Page, Segmented, colors, date, initials, styles} from './ui';
 import type {Settings, User, Platform} from './types';
 import type {Run} from '../App';
-type Props = {user: User; settings: Settings; platforms: Platform[]; run: Run; refresh: () => Promise<void>; busy: boolean; logout: () => void};
+type Props = {user: User; settings: Settings; platforms: Platform[]; run: Run; refresh: () => Promise<void>; busy: boolean; logout: () => void; onBack?: () => void};
 type Audit = {id: string; actor_name: string; action: string; created_at: string};
 // Nombres comprensibles para la bitácora de auditoría.
 const ACTIONS: Record<string, string> = {
@@ -16,21 +16,28 @@ const ACTIONS: Record<string, string> = {
   'customer.create': 'Creó un cliente', 'customer.update': 'Editó un cliente', 'customer.deactivate': 'Desactivó un cliente',
   'platform.create': 'Agregó un método de pago', 'platform.update': 'Cambió un método de pago', 'settings.update': 'Cambió los datos del negocio',
   'user.create': 'Creó un usuario', 'user.status': 'Activó o desactivó un usuario', 'user.password_reset': 'Restableció una contraseña',
+  'operations.reset':'Reinicio de movimientos', 'route.create':'Creó una ruta', 'route.update':'Editó una ruta', 'route.assign':'Asignó una ruta', 'route.close':'Cerró una ruta',
+  'inventory.group':'Configuró un inventario compartido', 'product.group':'Asoció un producto a un grupo', 'product.group.remove':'Retiró un producto de un grupo',
+  'inventory.delivery.replace':'Registró una entrega de inventario', 'inventory.adjust':'Ajustó el inventario', 'inventory.assign':'Asignó inventario',
+  'customer.route':'Cambió la ruta del cliente', 'collection.create':'Registró un abono', 'collection.reverse':'Revirtió un abono', 'sale.void':'Anuló una venta',
+  'agent.create':'Creó un vendedor', 'agent.update':'Editó un vendedor', 'user.update':'Editó un usuario', 'cash.admin_close_batch':'Realizó un cierre administrativo',
+  'device.register':'Autorizó un equipo', 'device.revoke':'Revocó un equipo', 'sync.accept':'Sincronizó una operación',
   'auth.login': 'Inició sesión', 'auth.logout': 'Cerró sesión',
 };
 
-export function SettingsScreen({user, settings, platforms, run, refresh, busy, logout}: Props) {
+export function SettingsScreen({user, settings, platforms, run, refresh, busy, logout, onBack}: Props) {
   const admin = user.role === 'admin';
   const [open, setOpen] = useState<string>(''), [confirmLogout, setConfirmLogout] = useState(false);
   const [business, setBusiness] = useState({business_name: settings.business_name, business_nit: settings.business_nit || '', business_address: settings.business_address || '', business_city: settings.business_city || '', business_phone: settings.business_phone || ''}), [width, setWidth] = useState(String(settings.paper_width));
-  const [users, setUsers] = useState<User[]>([]), [username, setUsername] = useState(''), [userName, setUserName] = useState(''), [password, setPassword] = useState(''), [role, setRole] = useState('seller'), [platformName, setPlatformName] = useState(''), [resetUser, setResetUser] = useState(''), [resetPassword, setResetPassword] = useState(''), [audit, setAudit] = useState<Audit[] | null>(null);
+  const [users, setUsers] = useState<User[]|null>(null), [username, setUsername] = useState(''), [userName, setUserName] = useState(''), [password, setPassword] = useState(''), [role, setRole] = useState('seller'), [platformName, setPlatformName] = useState(''), [resetUser, setResetUser] = useState(''), [resetPassword, setResetPassword] = useState(''), [audit, setAudit] = useState<Audit[] | null>(null);
   async function loadUsers() { setUsers(await api<User[]>('/users')); }
-  useEffect(() => { if (admin && open === 'users') run(loadUsers); }, [open]);
+  useEffect(() => { if (admin) run(loadUsers); }, [admin]);
   const set = (key: keyof typeof business) => (value: string) => setBusiness(b => ({...b, [key]: value}));
   const usernameError = username && !/^[a-zA-Z0-9_.-]{3,40}$/.test(username) ? 'De 3 a 40 caracteres, sin espacios (letras, números, punto o guion)' : null;
 
 
   return <Page>
+    <Header title="Perfil y configuración" onBack={onBack} backLabel="Volver a Más"/>
     <Card style={{flexDirection: 'row', alignItems: 'center', gap: 14}}>
       <View style={{width: 56, height: 56, borderRadius: 28, backgroundColor: colors.accentDark, alignItems: 'center', justifyContent: 'center'}}><Text style={{color: 'white', fontSize: 20, fontWeight: '800'}}>{initials(user.name)}</Text></View>
       <View style={{flex: 1, gap: 3}}>
@@ -67,13 +74,13 @@ export function SettingsScreen({user, settings, platforms, run, refresh, busy, l
         <Button title="Agregar método" icon="plus" variant="secondary" disabled={busy || !platformName.trim()} onPress={() => run(async () => { await api('/platforms', 'POST', {name: platformName.trim(), active: true}); setPlatformName(''); await refresh(); }, 'Método agregado')}/>
       </Group>
 
-      <Group id="users" open={open} onToggle={setOpen} icon="users" title="Usuarios y accesos" subtitle={`${users.filter(u => u.active).length} usuarios activos`}>
-        <UsersPanel currentUser={user} run={run} busy={busy} refresh={refresh}/>
+      <Group id="users" open={open} onToggle={setOpen} icon="users" title="Usuarios y accesos" subtitle={users===null?'Consultar usuarios, rutas y vendedores':`${users.filter(u => u.active).length} usuarios activos`}>
+        <UsersPanel onUsersChange={setUsers} currentUser={user} run={run} busy={busy} refresh={refresh}/>
       </Group>
 
       <Group id="audit" open={open} onToggle={setOpen} icon="activity" title="Actividad reciente" subtitle="Quién hizo qué y cuándo">
         {audit === null ? <Button title="Consultar últimos eventos" variant="secondary" disabled={busy} onPress={() => run(async () => setAudit(await api<Audit[]>('/audit')))}/>
-          : audit.slice(0, 60).map(a => <View key={a.id} style={{gap: 1}}><Text style={{color: colors.ink, fontWeight: '600'}}>{ACTIONS[a.action] || a.action}</Text><Text style={styles.small}>{a.actor_name || 'Configuración inicial'} · {date(a.created_at)}</Text></View>)}
+          : audit.slice(0, 60).map(a => <View key={a.id} style={{gap: 1}}><Text style={{color: colors.ink, fontWeight: '600'}}>{ACTIONS[a.action] || 'Actividad registrada'}</Text><Text style={styles.small}>{a.actor_name || 'Configuración inicial'} · {date(a.created_at)}</Text></View>)}
       </Group>
     </>}
 

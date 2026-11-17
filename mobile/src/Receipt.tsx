@@ -54,7 +54,8 @@ export function Receipt({sale, width}: {sale: Sale; width: 58 | 80}) {
     {sale.state==='ANULADA'&&<T bold>ANULADA · Original conservado</T>}
     <Pair left="Productos" right={String(sale.items?.length || 0)}/>
     {sale.payments?.map((p, i) => <View key={i}>
-      <Pair left="Método de pago" right={p.method === 'cash' ? 'EFECTIVO' : (p.platform_name || 'ELECTRÓNICO').toUpperCase()}/>
+      <Pair left={cop(p.amount_cents)} right={p.method === 'cash' ? 'EFECTIVO' : (p.platform_name || 'ELECTRÓNICO').toUpperCase()}/>
+      {p.reference&&<T small>Referencia: {p.reference}</T>}
       {p.method !== 'cash' && <Text style={{textAlign: 'right', fontSize: size - 2, color: '#111'}}>Pago electrónico</Text>}
     </View>)}
     <View style={r.dash}/>

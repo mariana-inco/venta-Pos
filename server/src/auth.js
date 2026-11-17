@@ -1,6 +1,7 @@
 import { randomBytes, scrypt as scryptCallback, timingSafeEqual, createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import { id, now, audit, transaction } from './db.js';
+import {assignUserRoute} from './user-route.js';
 const scrypt = promisify(scryptCallback);
 const options = {N:131072,r:8,p:1,maxmem:256*1024*1024};
 export const digest = text => createHash('sha256').update(text).digest('hex');
@@ -20,8 +21,9 @@ export async function createUser(db, input, actor=null) {
  return transaction(db,()=>{
   const user = {id:id(),name:input.name,username:input.username,role:input.role,active:1};
   db.prepare('INSERT INTO users VALUES (?,?,?,?,?,?,?)').run(user.id,user.username,user.name,passwordHash,user.role,1,now());
-  audit(db,actor,'user.create',user.id,{username:user.username,role:user.role});
-  return user;
+  assignUserRoute(db,user.id,input.route_id||null);
+  audit(db,actor,'user.create',user.id,{username:user.username,role:user.role,route_id:input.route_id||null});
+  return {...user,route_id:input.route_id||null};
  });
 }
 export async function login(db, username, password) {

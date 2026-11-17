@@ -29,9 +29,23 @@ async function store(){
 }
 async function emit(){const s=await store();const status={...s.status(),running:!!running,online,error:lastError||s.status().error,notice};for(const listener of listeners)listener(status);}
 const grantKey=(userId:string)=>`${prefix}-grant-${userId}`;
+async function reconcileServer(){
+ const state=await remote<{generation:string}>('/data-generation','GET',undefined,'',5000);
+ const s=await store(),profiles=s.profiles();
+ if(s.reconcileGeneration(state.generation)){
+  for(const user of profiles){
+   for(const suffix of ['', '-collection', '-delivery'])await SecureStore.deleteItemAsync('pos-pending-'+user.id+suffix);
+   await SecureStore.deleteItemAsync(grantKey(user.id));
+  }
+  await SecureStore.deleteItemAsync(prefix+'-active');
+  notice='El administrador reinició los movimientos. Inicia sesión nuevamente.';
+ }
+ return state.generation;
+}
 export async function activateLocal(user:User,token:string){
  const s=await store();
- const grant=await remote<{token:string}>('/devices/register','POST',{device_id:s.deviceId,name:'POS Android'},token);
+ const generation=await reconcileServer();
+ const grant=await remote<{token:string}>('/devices/register','POST',{device_id:s.deviceId,name:'POS Android',generation},token);
  await SecureStore.setItemAsync(grantKey(user.id),grant.token);
  s.profile({...user,blocked:false});
  // A valid catalogue is mandatory before first offline use; never claim ready early.
@@ -42,7 +56,9 @@ export async function activateLocal(user:User,token:string){
  void syncNow();
 }
 export async function restoreLocal():Promise<User|null>{
- const s=await store(),value=await SecureStore.getItemAsync(prefix+'-active');if(!value)return null;
+ const s=await store();
+ try{await reconcileServer();}catch(e){if(!(e instanceof ApiError)||e.status!==0)throw e;}
+ const value=await SecureStore.getItemAsync(prefix+'-active');if(!value)return null;
  const user=JSON.parse(value) as User,profile=s.get('profile',user.id);
  if(!profile||profile.blocked||!s.catalog)return null;
  return user;
@@ -70,6 +86,7 @@ export async function syncNow(){
  running=(async()=>{
   const s=await store();lastError=null;
   try{
+   await reconcileServer();
    // Ordered across users on this physical device: customer -> cash -> sale -> close.
    // Keep every event until an explicit acknowledgement, including HTTP 401 and 409.
    for(const row of s.pending()){
@@ -110,6 +127,14 @@ export async function localDocument(path:string,width:58|80,action:'share'|'prin
  const s=await store(),user=await restoreLocal();if(!user)throw new Error('Inicia sesión para consultar comprobantes.');
  const record=s.request(user,path,'GET');if(!record)throw new Error('Comprobante no encontrado en este dispositivo.');
  await outputLocalDocument(s,record,path.startsWith('/sales/')?'sale':'closure',width,action);
+}
+
+/** Only saved local receipts; requesting one never retries printing or creates a sale. */
+export async function cachedPrintRecord(path:string):Promise<any|null>{
+ const match=path.match(/^\/(sales|closures)\/([^/?]+)$/);if(!match)return null;
+ const s=await store(),user=await restoreLocal();if(!user)return null;
+ if(!s.get(match[1]==='sales'?'sale':'closure',match[2]))return null;
+ return s.request(user,path,'GET')||null;
 }
 
 export async function readDraftRequest(userId:string):Promise<Record<string,unknown>|null>{return (await store()).meta('pending-'+userId);}
