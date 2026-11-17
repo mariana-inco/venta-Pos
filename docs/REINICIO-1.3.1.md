@@ -31,3 +31,11 @@ Ejecutado el 16 de noviembre de 2026, 21:37 Colombia (17 de noviembre 02:37 UTC)
 - `PRAGMA integrity_check = ok`, `PRAGMA foreign_key_check` vacío. Servicio reiniciado, `/health` 200 y generación nueva confirmada.
 - APK `output/dok-pollo-mc-1.3.1-neotek.apk`, versión 1.3.1/código 12, mismo paquete y certificado. SHA256 `24383f403d55e89620a915d0039e81bb3927187b26526f7014ad6541bfce8d0f`.
 - Sin dispositivos ADB conectados: actualización física de cada terminal e impresión/lector pendientes. Instalar APK mediante LocalSend, cerrar/abrir e iniciar sesión con internet; registrar nuevas entregas para habilitar ventas.
+
+## Limpieza adicional solicitada
+
+16 de noviembre, 21:43 Colombia: se eliminaron los 10 productos y las cuentas `Misael` y `Misael2026`. Se conservaron únicamente `admin` (administrador) y `Robin` (Robinson Rojas, vendedor), ambos activos, con sus contraseñas originales. Clientes y rutas se conservan. Ventas/cajas/abonos continúan en cero.
+
+Respaldo verificado: `/data/backups/before-catalog-clean-2026-11-17T02-43-05.071Z.sqlite`. Limpieza mediante `cleanStartCatalog`, en transacción y con servicio detenido. Rechaza movimientos nuevos o inventario no vacío; conserva auditoría desligando la referencia a usuarios eliminados. Rotó la generación y revocó sesiones para renovar los catálogos en equipos con 1.3.1. Se verificaron integridad, relaciones y contraseñas sin exponerlas. 28 pruebas backend aprobadas.
+
+No se generó otra APK: es un cambio de datos. Coolify actualiza la API; las pantallas nativas incluidas en una APK no se descargan al refrescar. Este proyecto aún no tiene distribución OTA de JavaScript configurada.
