@@ -43,3 +43,9 @@ Cierres/documentos anteriores no se regeneran ni inventan detalles ausentes. No 
 - Ejemplo ficticio: `output/pdf/cierre-gastos-abonos-58mm.pdf`.
 
 Desplegar backend de esta rama primero. Mantener el volumen `/data`, ejecutar respaldo consistente y comprobar `/health`/migración. Transferir APK por LocalSend y elegir **Actualizar**, sin desinstalar ni borrar datos. Iniciar sesión con conexión y comprobar Gastos, reapertura y Compartir en la terminal.
+
+## Despliegue confirmado
+
+- Coolify: deployment `a8arkddy3bbictfpxejneyqs`, commit `75b7317443aecaac85244d7120455954f0de3f93`, rama `deploy/backend-pos`; rolling update completado 17/11/2026 18:54:29 Colombia.
+- Contenedor `0sxtn0nojcnijnl1dxn7rmev-20261117T235348`, healthy; `/health` HTTP200.
+- Comprobación autenticada de solo lectura: rutas/cierres/cajas y nuevo listado de gastos HTTP200; sesión diagnóstica temporal eliminada al terminar. Integridad OK, cero relaciones inválidas. Datos consultados: 23 clientes, 3 usuarios, 6 productos, 2 rutas, una caja y un cierre de ruta histórico; no se crearon operaciones de prueba en producción.
