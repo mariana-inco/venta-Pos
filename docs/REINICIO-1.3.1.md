@@ -41,3 +41,5 @@ Respaldo verificado: `/data/backups/before-catalog-clean-2026-11-17T02-43-05.071
 No se generó otra APK: es un cambio de datos. Coolify actualiza la API; las pantallas nativas incluidas en una APK no se descargan al refrescar. Este proyecto aún no tiene distribución OTA de JavaScript configurada.
 
 21:46 Colombia: por instrucción adicional se eliminó también `Robin` (Robinson Rojas), sus vendedores asociados y accesos. Queda únicamente `admin`, activo, sin cambiar contraseña. Sin movimientos nuevos. Respaldo verificado `/data/backups/before-remove-robin-2026-11-17T02-46-04.502Z.sqlite`; eliminación transaccional con claves foráneas comprobadas y auditoría conservada. No requirió otra APK.
+
+21:59 Colombia: se eliminaron las rutas `La vega - Nocaima` y `Pacho`, sus asignaciones a usuarios/clientes y las filas de stock vacías. Sin movimientos nuevos. Quedan 0 rutas, 0 asignaciones, 0 productos, 0 ventas, 1 usuario y 3 clientes (sin ruta, deben asignarse antes de vender). Respaldo verificado `/data/backups/before-remove-routes-2026-11-17T02-59-36.785Z.sqlite`; transacción completada, claves foráneas sin errores e integridad ok. Sin cambio de APK.
