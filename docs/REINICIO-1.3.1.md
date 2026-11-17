@@ -39,3 +39,5 @@ Ejecutado el 16 de noviembre de 2026, 21:37 Colombia (17 de noviembre 02:37 UTC)
 Respaldo verificado: `/data/backups/before-catalog-clean-2026-11-17T02-43-05.071Z.sqlite`. Limpieza mediante `cleanStartCatalog`, en transacción y con servicio detenido. Rechaza movimientos nuevos o inventario no vacío; conserva auditoría desligando la referencia a usuarios eliminados. Rotó la generación y revocó sesiones para renovar los catálogos en equipos con 1.3.1. Se verificaron integridad, relaciones y contraseñas sin exponerlas. 28 pruebas backend aprobadas.
 
 No se generó otra APK: es un cambio de datos. Coolify actualiza la API; las pantallas nativas incluidas en una APK no se descargan al refrescar. Este proyecto aún no tiene distribución OTA de JavaScript configurada.
+
+21:46 Colombia: por instrucción adicional se eliminó también `Robin` (Robinson Rojas), sus vendedores asociados y accesos. Queda únicamente `admin`, activo, sin cambiar contraseña. Sin movimientos nuevos. Respaldo verificado `/data/backups/before-remove-robin-2026-11-17T02-46-04.502Z.sqlite`; eliminación transaccional con claves foráneas comprobadas y auditoría conservada. No requirió otra APK.
