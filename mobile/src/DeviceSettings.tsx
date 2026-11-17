@@ -32,7 +32,7 @@ export function DeviceSettings({run,busy}:{run:Run;busy:boolean}){
   <Card>
    <Text style={styles.h2}>Datos de este dispositivo</Text>
    <Text style={styles.body}>Las ventas y los tickets se guardan aquí antes de enviarse. Puedes vender e imprimir sin internet después del primer inicio de sesión con conexión.</Text>
-   <Text style={styles.small}>Dispositivo: {status.device_id||'Preparando…'}</Text>
+   <Text style={styles.small}>Equipo: {status.device_id?'Registrado':'Preparando…'}</Text>
    <Text style={styles.body}>{status.pending} operaciones pendientes · {status.blocked} requieren revisión</Text>
    <Text style={styles.small}>Última descarga: {status.last_sync?new Date(status.last_sync).toLocaleString('es-CO'):'Sin descargar'}</Text>
    {!!status.error&&<Banner tone="orange" text={status.error}/>}
