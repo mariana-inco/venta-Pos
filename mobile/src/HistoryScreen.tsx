@@ -1,7 +1,7 @@
 import {CashMovements} from './CashMovements';
 import {FinancialSummary,InventorySummary} from './ResultsScreen';
-import React, {useEffect, useMemo, useState} from 'react';
-import {Pressable, ScrollView, Text, View} from 'react-native';
+import React, {useEffect, useMemo, useState, useRef} from 'react';
+import {AppState, Pressable, ScrollView, Text, View} from 'react-native';
 import {Feather} from '@expo/vector-icons';
 import {api, documentAction} from './api';
 import {Receipt} from './Receipt';
@@ -16,21 +16,24 @@ const methodName = (s: {method?: string; platform_name?: string | null}) => s.me
 
 export function HistoryScreen({user, settings, run, busy, initialSale, initialClosure, sessionFilter, clearInitial, customers, sessions}: Props) {
   const admin = user.role === 'admin';
+  const [today,setToday]=useState(bogotaDay());
+  useEffect(()=>{const update=()=>setToday(bogotaDay());const timer=setInterval(update,1000);const app=AppState.addEventListener('change',state=>{if(state==='active')update();});return()=>{clearInterval(timer);app.remove();};},[]);
+  const visibleSale=(s:Sale)=>admin||(s.seller_id===user.id&&new Date(Date.parse(s.created_at)-18000000).toISOString().slice(0,10)===today);
   const [tab, setTab] = useState(initialClosure ? 'closures' : 'sales'), [activeSession, setActiveSession] = useState(sessionFilter);
-  const [sale, setSale] = useState<Sale | null>(initialSale), [receipt, setReceipt] = useState(!!initialSale), [closure, setClosure] = useState<Closure | null>(initialClosure);
+  const [sale, setSale] = useState<Sale | null>(initialSale&&visibleSale(initialSale)?initialSale:null), [receipt, setReceipt] = useState(!!initialSale), [closure, setClosure] = useState<Closure | null>(initialClosure);
   const [page, setPage] = useState<SalesPage | null>(null), [list, setList] = useState<Sale[]>([]), [closures, setClosures] = useState<Closure[] | null>(null);
-  const [period, setPeriod] = useState<Period>(sessionFilter ? 'all' : 'today'), [from, setFrom] = useState(''), [to, setTo] = useState(''), [method, setMethod] = useState(''), [customer, setCustomer] = useState(''), [seller, setSeller] = useState('');
+  const [period, setPeriod] = useState<Period>(admin&&sessionFilter ? 'all' : 'today'), [from, setFrom] = useState(''), [to, setTo] = useState(''), [method, setMethod] = useState(''), [customer, setCustomer] = useState(''), [seller, setSeller] = useState('');
   const [filters, setFilters] = useState(false), [customerSearch, setCustomerSearch] = useState(''), [showGroups, setShowGroups] = useState(false), [group, setGroup] = useState('method');
   const [width, setWidth] = useState<58 | 80>(settings.paper_width), [note, setNote] = useState('');
   useBack(!!sale || !!closure, back);
 
   const range = useMemo(() => {
-    if (period === 'today') return {from: bogotaDay(0), to: bogotaDay(0)};
+    if (!admin || period === 'today') return {from: today, to: today};
     if (period === 'yesterday') return {from: bogotaDay(-1), to: bogotaDay(-1)};
     if (period === 'week') return {from: bogotaDay(-6), to: bogotaDay(0)};
     if (period === 'range') return {from: isIsoDate(from) ? from : '', to: isIsoDate(to) ? to : ''};
     return {from: '', to: ''};
-  }, [period, from, to]);
+  }, [period, from, to,admin,today]);
   const rangeError = period === 'range' && ((from && !isIsoDate(from)) || (to && !isIsoDate(to))) ? 'Usa el formato AAAA-MM-DD, por ejemplo 2026-10-01' : period === 'range' && range.from && range.to && range.from > range.to ? 'La fecha inicial debe ser anterior a la final' : null;
 
   async function load(next = 1) {
@@ -44,6 +47,8 @@ export function HistoryScreen({user, settings, run, busy, initialSale, initialCl
     const result = await api<SalesPage>('/sales?' + params);
     setPage(result); setList(current => next === 1 ? result.sales : [...current, ...result.sales]);
   }
+  const previousDay=useRef(today);
+  useEffect(()=>{if(previousDay.current!==today&&!admin){setSale(null);setReceipt(false);setPage(null);setList([]);}previousDay.current=today;},[today]);
   useEffect(() => { if (tab === 'sales' && !rangeError) run(() => load(1)); }, [tab, range.from, range.to, method, customer, seller, activeSession]);
   useEffect(() => { if (tab === 'closures' && admin) run(async () => setClosures(await api<Closure[]>('/closures'))); }, [tab]);
 
@@ -56,7 +61,7 @@ export function HistoryScreen({user, settings, run, busy, initialSale, initialCl
   const WidthPicker = () => <View style={{gap: 6}}><Text style={styles.label}>Tamaño del papel</Text><Segmented items={[{id: '58', name: '58 mm'}, {id: '80', name: '80 mm'}]} value={String(width)} onChange={v => setWidth(Number(v) as 58 | 80)}/></View>;
 
   // ── Vista previa del comprobante: datos históricos guardados, nunca los precios actuales.
-  if (sale && receipt) return <Page testID="receipt-screen" footer={<FooterBar>
+  if (sale && visibleSale(sale) && receipt) return <Page testID="receipt-screen" footer={<FooterBar>
       <Button title="Compartir" icon="share-2" variant="secondary" style={{flex: 1}} disabled={busy} onPress={() => pdf(`/sales/${sale.id}`, 'share')}/>
       <Button title="PDF" icon="download" variant="outline" disabled={busy} onPress={() => pdf(`/sales/${sale.id}`, 'open')} testID="receipt-pdf"/>
     </FooterBar>}>
@@ -68,7 +73,7 @@ export function HistoryScreen({user, settings, run, busy, initialSale, initialCl
   </Page>;
 
   // ── Detalle de venta
-  if (sale) return <Page testID="sale-detail">
+  if (sale && visibleSale(sale)) return <Page testID="sale-detail">
     <BackLink text="Historial"/>
     <Header eyebrow="VENTA REGISTRADA" title={`Venta ${saleNumber(sale)}`} subtitle={date(sale.created_at)} right={<Badge text="Guardada" icon="check"/>}/>
     <Card>
@@ -151,7 +156,7 @@ export function HistoryScreen({user, settings, run, busy, initialSale, initialCl
   // ── Listado
   const totals = page?.groups.method?.reduce((a, g) => ({count: a.count + g.count, total: a.total + g.total_cents}), {count: 0, total: 0});
   const sections: {day: string; items: Sale[]}[] = [];
-  for (const s of list) { const day = dayLabel(s.created_at); const last = sections[sections.length - 1]; if (last?.day === day) last.items.push(s); else sections.push({day, items: [s]}); }
+  for (const s of list.filter(visibleSale)) { const day = dayLabel(s.created_at); const last = sections[sections.length - 1]; if (last?.day === day) last.items.push(s); else sections.push({day, items: [s]}); }
   const rangeText = period === 'range' ? `${range.from ? shortDate(range.from + 'T12:00:00Z') : '…'} – ${range.to ? shortDate(range.to + 'T12:00:00Z') : '…'}` : '';
   const activeChips = [
     period === 'range' && {key: 'range', text: rangeText, clear: () => { setPeriod('today'); setFrom(''); setTo(''); }},
@@ -173,7 +178,7 @@ export function HistoryScreen({user, settings, run, busy, initialSale, initialCl
     {admin && <Segmented items={[{id: 'sales', name: 'Ventas'}, {id: 'closures', name: 'Cierres'}]} value={tab} onChange={setTab} testID="history-tabs"/>}
     {tab === 'sales' ? <>
       <View style={{gap: 8}}>
-        <Segmented items={PERIODS} value={period} onChange={v => setPeriod(v as Period)} testID="history-period"/>
+        {admin?<Segmented items={PERIODS} value={period} onChange={v => setPeriod(v as Period)} testID="history-period"/>:<Text style={styles.small}>Solo puedes consultar tus ventas de hoy.</Text>}
         {/* Medio de pago en una sola fila: se desliza si no cabe, sin empujar los resultados hacia abajo. */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{gap: 8}}>
           {METHODS.map(m => <Chip key={m.id} text={m.name} on={method === m.id} onPress={() => setMethod(m.id)}/>)}
@@ -200,7 +205,7 @@ export function HistoryScreen({user, settings, run, busy, initialSale, initialCl
 
       {!page && busy && <Loading text="Buscando ventas…"/>}
       {rangeError && <Banner tone="orange" text={rangeError} action="Ajustar fechas" onAction={() => setFilters(true)}/>}
-      {page && list.length === 0 && <Empty icon="calendar" title={period === 'today' && !method && !activeChips.length ? 'Sin ventas hoy' : 'Sin ventas con estos filtros'} text={period === 'today' && !method && !activeChips.length ? 'Las ventas confirmadas hoy aparecerán aquí.' : 'Prueba otro periodo o quita filtros.'} action={period !== 'all' || method || activeChips.length ? 'Ver todas las ventas' : undefined} onAction={() => { clearAll(); setPeriod('all'); }}/>}
+      {page && list.length === 0 && <Empty icon="calendar" title={period === 'today' && !method && !activeChips.length ? 'Sin ventas hoy' : 'Sin ventas con estos filtros'} text={period === 'today' && !method && !activeChips.length ? 'Las ventas confirmadas hoy aparecerán aquí.' : 'Prueba otro periodo o quita filtros.'} action={admin&&(period !== 'all' || method || activeChips.length) ? 'Ver todas las ventas' : undefined} onAction={() => { clearAll(); setPeriod('all'); }}/>}
       {sections.map(section => <Section key={section.day} title={section.day.charAt(0).toUpperCase() + section.day.slice(1)}>
         <View style={{backgroundColor: colors.white, borderRadius: 14, borderWidth: 1, borderColor: colors.line, overflow: 'hidden'}}>
           {section.items.map((s, i) => <Pressable key={s.id} testID={`sale-row-${s.number}`} accessibilityRole="button" accessibilityLabel={`Venta ${saleNumber(s)}, ${s.snapshot.customer_name}, ${cop(s.total_cents)}`} onPress={() => run(async () => { setSale(await api<Sale>(`/sales/${s.id}`)); setReceipt(false); })}
@@ -229,18 +234,18 @@ export function HistoryScreen({user, settings, run, busy, initialSale, initialCl
       </Card>)}
     </>}
 
-    <Sheet visible={filters} onClose={() => setFilters(false)} title="Filtros" subtitle="Hoy, Ayer, 7 días y medio de pago están en la pantalla principal" footer={<>
+    <Sheet visible={filters} onClose={() => setFilters(false)} title="Filtros" subtitle={admin?"Hoy, Ayer, 7 días y medio de pago están en la pantalla principal":"Ventas de hoy por cliente y medio de pago"} footer={<>
       <Button title="Ver resultados" size="lg" disabled={!!rangeError} onPress={() => setFilters(false)}/>
       <Button title="Quitar todos los filtros" variant="ghost" onPress={() => { clearAll(); setFilters(false); }}/>
     </>}>
-      <View style={{gap: 8}}>
+      {admin&&<View style={{gap: 8}}>
         <Text style={styles.label}>Rango de fechas</Text>
         <View style={[styles.row, {alignItems: 'flex-start', gap: 10}]}>
           <View style={{flex: 1}}><Field label="Desde" kind="date" value={from} onChange={t => { setFrom(t); setPeriod('range'); }} placeholder={bogotaDay(-30)} returnKey="next"/></View>
           <View style={{flex: 1}}><Field label="Hasta" kind="date" value={to} onChange={t => { setTo(t); setPeriod('range'); }} placeholder={bogotaDay(0)}/></View>
         </View>
         {rangeError ? <Text style={styles.fieldError}>{rangeError}</Text> : <Text style={styles.hint}>Formato AAAA-MM-DD. Deja uno vacío para no limitar ese extremo.</Text>}
-      </View>
+      </View>}
       {admin && sellers.length > 0 && <View style={{gap: 8}}><Text style={styles.label}>Vendedor</Text><Choice items={[{id: '', name: 'Todos'}, ...sellers]} value={seller} onChange={setSeller}/></View>}
       <View style={{gap: 8}}>
         <Text style={styles.label}>Cliente{customer ? `: ${customerName(customer)}` : ''}</Text>

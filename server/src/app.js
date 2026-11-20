@@ -3,7 +3,7 @@ import {dataGeneration} from './data-generation.js';
 import {normalizedReference} from './payments.js';
 import {startSale} from './sale-drafts.js';
 import {setCustomerRoute} from './route-operations.js';
-import {mountBusiness,customerView,typeFor} from './business.js';
+import {mountBusiness,customerView,typeFor,dayOf} from './business.js';
 import {mountUsers} from './users.js';
 import {mountCommerce,productsFor,saveCodes,codesFor,routeFor,balance} from './commerce.js';
 import express from 'express';
@@ -118,7 +118,7 @@ export function createApp(db) {
  app.get('/api/sales',(req,res)=>{
   const filter=z.object({session_id:z.string().uuid().optional(),seller_id:z.string().uuid().optional(),customer_id:z.string().uuid().optional(),method:z.enum(['cash','electronic','credit','mixed']).optional(),from:z.iso.date().optional(),to:z.iso.date().optional(),page:z.coerce.number().int().min(1).max(100000).default(1)}).safeParse(req.query);
   if(!filter.success)fail(400,'Filtros inválidos.');const f=filter.data;const where=[],params=[];
-  if(req.user.role!=='admin'){where.push('s.seller_id=?');params.push(req.user.id);}
+  if(req.user.role!=='admin'){where.push('s.seller_id=?');params.push(req.user.id);f.from=dayOf(now());f.to=f.from;}
   for(const key of ['session_id','seller_id','customer_id']) if(f[key]){where.push(`s.${key}=?`);params.push(f[key]);}
   const saleMethod="CASE WHEN t.credit=1 THEN 'credit' ELSE p.method END";
   if(f.method){where.push(`${saleMethod}=?`);params.push(f.method);}

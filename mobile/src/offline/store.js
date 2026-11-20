@@ -76,7 +76,7 @@ export class LocalStore {
   return catalog.products.filter(p=>user.role==='admin'||p.active).map(p=>({...p,stock_milli:p.stock_milli===null?null:p.stock_milli-(deductions.get(p.id)||0)}));
  }
  customers(){const map=new Map((this.catalog?.customers||[]).map(c=>[c.id,c]));for(const c of this.all('customer'))map.set(c.id,c);return [...map.values()].filter(c=>c.active!==0);}
- sales(user){return this.all('sale').filter(s=>user.role==='admin'||s.seller_id===user.id).sort((a,b)=>b.created_at.localeCompare(a.created_at)||b.number-a.number);}
+ sales(user){return this.all('sale').filter(s=>user.role==='admin'||(s.seller_id===user.id&&new Date(Date.parse(s.created_at)-18000000).toISOString().slice(0,10)===new Date(Date.parse(this.clock())-18000000).toISOString().slice(0,10))).sort((a,b)=>b.created_at.localeCompare(a.created_at)||b.number-a.number);}
  totals(sessionId){
   const sales=this.all('sale').filter(s=>s.session_id===sessionId),platforms=new Map();let cash=0,electronic=0;
   for(const s of sales){const p=s.payments[0];if(p.method==='cash')cash+=s.total_cents;else{electronic+=s.total_cents;const key=p.platform_id;const prev=platforms.get(key)||{platform_id:key,platform_name:p.platform_name,amount:0};prev.amount+=s.total_cents;platforms.set(key,prev);}}

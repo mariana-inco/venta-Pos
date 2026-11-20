@@ -2,7 +2,7 @@
   "expo": {
     "name": "DOK POLLO MC",
     "slug": "venta-pos",
-    "version": "1.3.3",
+    "version": "1.3.4",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "scheme": "ventapos",
@@ -16,7 +16,7 @@
     "android": {
       "package": "com.ventapos.mobile",
       "allowBackup": false,
-      "versionCode": 14
+      "versionCode": 15
     },
     "plugins": [
       "expo-secure-store",

@@ -32,6 +32,7 @@ export function saleDetail(db,user,saleId) {
  const sale=db.prepare('SELECT * FROM sales WHERE id=?').get(saleId);
  if(!sale) fail(404,'Venta no encontrada.');
  if(user.role!=='admin' && sale.seller_id!==user.id) fail(403,'No puedes consultar una venta ajena.');
+ if(user.role!=='admin' && dayOf(sale.created_at)!==dayOf(now()))fail(403,'Los vendedores solo pueden consultar ventas de hoy.');
  return {...sale,...balance(db,sale.id),terms:db.prepare('SELECT * FROM sale_terms WHERE sale_id=?').get(sale.id),session_number:sessionNumber(db,sale.session_id),snapshot:JSON.parse(sale.snapshot),items:db.prepare('SELECT * FROM sale_items WHERE sale_id=? ORDER BY rowid').all(saleId),payments:paymentsFor(db,saleId)};
 }
 export function recordSale(db,user,input) {
