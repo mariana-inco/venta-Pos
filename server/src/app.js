@@ -150,6 +150,7 @@ export function createApp(db) {
  app.use((req,res)=>res.status(404).json({error:'Ruta no encontrada.'}));
  app.use((error,req,res,next)=>{
   if(res.headersSent)return next(error);
+  if(error.code?.startsWith('ERR_SQLITE')&&/sin internet/.test(error.message))return res.status(409).json({error:error.message});
   if(error.status)return res.status(error.status).json({error:error.message});
   if(error.code?.startsWith('ERR_SQLITE') && /UNIQUE/.test(error.message))return res.status(409).json({error:'Ya existe un registro con esos datos.'});
   console.error('Error de operación:',error.code||error.name,error.message);

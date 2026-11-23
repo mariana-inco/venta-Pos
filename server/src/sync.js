@@ -1,3 +1,5 @@
+import {schemas} from './validation.js';
+import {activeReservation,prepareOfflineRoute,releaseOfflineRoute,ingestRouteSale} from './offline-route.js';
 import {dataGeneration,requireGeneration} from './data-generation.js';
 import {customerView} from './business.js';
 import {claimReceipt} from './receipt-numbers.js';
@@ -6,7 +8,7 @@ import {randomBytes} from 'node:crypto';
 import {z} from 'zod';
 import {digest,authenticate,admin,publicUser} from './auth.js';
 import {id,now,transaction,audit} from './db.js';
-import {fail,sessionFor,saleDetail,closeSession,closureDetail} from './service.js';
+import {fail,sessionFor,totals,saleDetail,closeSession,closureDetail} from './service.js';
 import {subtotal} from './money.js';
 
 const uuid=z.string().uuid();
@@ -14,6 +16,7 @@ const amount=z.number().int().min(0).max(100_000_000_000);
 const text=(max=120)=>z.string().trim().min(1).max(max);
 const base={id:uuid,sequence:z.number().int().positive().max(Number.MAX_SAFE_INTEGER),created_at:z.iso.datetime()};
 export const eventSchema=z.discriminatedUnion('type',[
+ z.object({...base,type:z.literal('route.sale'),data:z.object({reservation_id:uuid,catalog_version:z.string().length(64),receipt_sequence:z.number().int().positive(),input:schemas.sale})}),
  z.object({...base,type:z.literal('customer.create'),data:z.object({name:text(),city:text(100)})}),
  z.object({...base,type:z.literal('cash.open'),data:z.object({opening_cents:amount})}),
  z.object({...base,type:z.literal('sale.create'),data:z.object({receipt_sequence:z.number().int().positive().optional(),session_id:uuid,customer_id:uuid,catalog_version:z.string().length(64),customer_name:text(),customer_city:text(100),items:z.array(z.object({product_id:uuid,quantity_milli:amount.refine(n=>n>0)})).min(1).max(100),method:z.enum(['cash','electronic']),platform_id:z.string().max(80).nullable()})}),
@@ -42,6 +45,8 @@ export function authenticateDevice(db){return (req,res,next)=>{
 };}
 export function catalogFor(db,user,deviceId){
  return transaction(db,()=>{
+  const reserved=activeReservation(db,user,deviceId);
+  if(reserved)return {...JSON.parse(reserved.payload),session:{...sessionFor(db,user,reserved.session_id),...totals(db,reserved.session_id)},session_ack_sequence:db.prepare('SELECT last_sequence FROM sync_devices WHERE id=?').get(deviceId).last_sequence,user,ack_sequence:db.prepare('SELECT last_sequence FROM sync_devices WHERE id=?').get(deviceId).last_sequence,server_time:now()};
   const payload={generation:dataGeneration(db),sales_policy:'route-v2',settings:db.prepare('SELECT * FROM settings WHERE id=1').get(),route:routeFor(db,user),products:productsFor(db,user,true),platforms:db.prepare('SELECT * FROM platforms ORDER BY id').all()};
   const serialized=canonical(payload),version=digest(serialized);
   db.prepare('INSERT OR IGNORE INTO catalog_versions VALUES (?,?,?)').run(version,serialized,now());
@@ -75,6 +80,7 @@ export function ingestEvent(db,user,deviceId,raw){
 }
 function applyEvent(db,user,deviceId,event){
  const d=event.data;
+ if(event.type==='route.sale')return ingestRouteSale(db,user,deviceId,event);
  if(event.type==='sale.create'&&routeFor(db,user))fail(409,'Las ventas por ruta requieren confirmación en línea para proteger el inventario compartido.');
  if(event.type==='customer.create'){
   db.prepare('INSERT INTO customers VALUES (?,?,?,?,?,?)').run(event.id,d.name,d.city,1,event.created_at,event.created_at);
@@ -139,6 +145,8 @@ function applyEvent(db,user,deviceId,event){
 }
 export function mountSync(app,db){
  const auth=authenticateDevice(db);
+ app.post('/api/sync/route/prepare',auth,(req,res)=>{const d=z.object({session_id:uuid}).strict().parse(req.body);prepareOfflineRoute(db,req.user,req.deviceId,d.session_id,()=>catalogFor(db,req.user,req.deviceId));res.json(catalogFor(db,req.user,req.deviceId));});
+ app.post('/api/sync/route/release',auth,(req,res)=>{const d=z.object({sequence:z.number().int().nonnegative()}).strict().parse(req.body);res.json(releaseOfflineRoute(db,req.user,req.deviceId,d.sequence));});
  app.get('/api/sync/catalog',auth,(req,res)=>res.json(catalogFor(db,req.user,req.deviceId)));
  app.post('/api/sync/events',auth,(req,res)=>{
   const body=z.object({events:z.array(eventSchema).min(1).max(20)}).safeParse(req.body);

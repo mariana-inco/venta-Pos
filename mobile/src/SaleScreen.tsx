@@ -1,3 +1,5 @@
+import {offlineEnabled} from './offline/runtime';
+import {useSyncStatus} from './DeviceSettings';
 import {SearchSelect} from './SearchSelect';
 import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {Platform, Pressable, Text, View, TextInput, Switch} from 'react-native';
@@ -15,6 +17,8 @@ const UNIT_PRESETS = ['1', '2', '3', '6', '12', '24'];
 const PAGE = 30;
 
 export function SaleScreen({route,userId, active, session, products:rawProducts, customers, platforms, paperWidth, refresh, run, busy, onViewSale, onOpenCash, onFlowChange}: Props) {
+  const sync=useSyncStatus();
+  const offlineReady=!!sync?.offline_ready;
   const [cart, setCart] = useState<CartLine[]>([]), [query, setQuery] = useState(''), [limit, setLimit] = useState(PAGE), [view, setView] = useState<SaleView>('catalog');
   const [customer, setCustomer] = useState(''), [pickCustomer, setPickCustomer] = useState(false), [customerSearch, setCustomerSearch] = useState(''), [newCustomer, setNewCustomer] = useState(false), [name, setName] = useState(''), [city, setCity] = useState('');
   const [draft,setDraft]=useState<any>(null),[hasInitial,setHasInitial]=useState(false),[initialMethod,setInitialMethod]=useState('cash'),[reference,setReference]=useState(''),[mixed,setMixed]=useState<{method:string;amount:string;reference:string}[]>([{method:'cash',amount:'',reference:''}]),[referenceErrors,setReferenceErrors]=useState<string[]>([]),[checkedRefs,setCheckedRefs]=useState('');
@@ -62,10 +66,10 @@ export function SaleScreen({route,userId, active, session, products:rawProducts,
   const mixedEntered=mixed.reduce((n,p)=>n+(moneyToCents(p.amount)||0),0);
   const refs=method==='mixed'?mixed.filter(p=>p.method!=='cash').map(p=>({platform_id:p.method,reference:p.reference})):method==='electronic'?[{platform_id:pay,reference}]:method==='credit'&&hasInitial&&initialMethod!=='cash'?[{platform_id:initialMethod,reference}]:[];
   const refsKey=JSON.stringify(refs);
-  useEffect(()=>{if(!refs.length){setReferenceErrors([]);setCheckedRefs(refsKey);return;}let live=true;const timer=setTimeout(()=>{Promise.all(refs.map(async p=>{if(!p.reference.trim())return 'Ingresa la referencia de cada pago electrónico.';const r=await api<{duplicate:boolean}>('/payment-reference?'+new URLSearchParams(p));return r.duplicate?'Referencia ya registrada para este medio.':'';})).then(raw=>{const errors:string[]=raw;if(live){const keys=refs.map(p=>p.platform_id+'/'+p.reference.normalize('NFKC').replace(/\s/g,'').toUpperCase());if(new Set(keys).size<keys.length)errors.push('Hay referencias repetidas en las líneas de pago.');setReferenceErrors(errors.filter(Boolean));setCheckedRefs(refsKey);}}).catch(()=>{if(live){setReferenceErrors(['No se pudo verificar la referencia. Revisa la conexión.']);setCheckedRefs(refsKey);}});return ()=>{live=false;};},250);return ()=>{live=false;clearTimeout(timer);};},[refsKey]);
-  const referencesOk=!refs.length||(refs.every(p=>p.reference.trim())&&checkedRefs===refsKey&&!referenceErrors.length);
+  useEffect(()=>{if(offlineReady&&refs.length){setReferenceErrors(['Finaliza el modo sin internet para verificar pagos electrónicos.']);setCheckedRefs(refsKey);return;}if(!refs.length){setReferenceErrors([]);setCheckedRefs(refsKey);return;}let live=true;const timer=setTimeout(()=>{Promise.all(refs.map(async p=>{if(!p.reference.trim())return 'Ingresa la referencia de cada pago electrónico.';const r=await api<{duplicate:boolean}>('/payment-reference?'+new URLSearchParams(p));return r.duplicate?'Referencia ya registrada para este medio.':'';})).then(raw=>{const errors:string[]=raw;if(live){const keys=refs.map(p=>p.platform_id+'/'+p.reference.normalize('NFKC').replace(/\s/g,'').toUpperCase());if(new Set(keys).size<keys.length)errors.push('Hay referencias repetidas en las líneas de pago.');setReferenceErrors(errors.filter(Boolean));setCheckedRefs(refsKey);}}).catch(()=>{if(live){setReferenceErrors(['No se pudo verificar la referencia. Revisa la conexión.']);setCheckedRefs(refsKey);}});return ()=>{live=false;};},250);return ()=>{live=false;clearTimeout(timer);};},[refsKey,offlineReady]);
+  const referencesOk=(!offlineReady||!refs.length)&&(!refs.length||(refs.every(p=>p.reference.trim())&&checkedRefs===refsKey&&!referenceErrors.length));
 
-  const valid = !!draft && referencesOk && (method!=='mixed'||(mixedEntered===total&&mixed.every(p=>(moneyToCents(p.amount)||0)>0))) && (method!=='credit'||(initialCents!==null&&initialCents>=0&&initialCents<=total&&(!hasInitial||initialCents>0))) && !!route && !!agent && !!session && !!customer && linesOk && !!method && (method==='credit'||!receivedError);
+  const valid = (!offlineReady||method==='cash'||(method==='credit'&&(!hasInitial||initialMethod==='cash'))) && !!draft && referencesOk && (method!=='mixed'||(mixedEntered===total&&mixed.every(p=>(moneyToCents(p.amount)||0)>0))) && (method!=='credit'||(initialCents!==null&&initialCents>=0&&initialCents<=total&&(!hasInitial||initialCents>0))) && !!route && !!agent && !!session && !!customer && linesOk && !!method && (method==='credit'||!receivedError);
   const inCart = (id: string) => lines.find(l => l.product.id === id);
 
   const visible = useMemo(() => {
@@ -207,8 +211,9 @@ export function SaleScreen({route,userId, active, session, products:rawProducts,
         </Card>
         <Card>
           <Text style={styles.sectionTitle}>Método de pago</Text>
+          {offlineReady&&<Text style={styles.small}>Modo sin internet: efectivo o crédito. Para pagos electrónicos, cancela esta venta y finaliza el modo con conexión.</Text>}
           <View style={[styles.wrap, {gap: 10}]}>
-            {[{id:'mixed',name:'Varios',icon:'layers' as const},{id:'credit',name:'Crédito',icon:'clock' as const},{id: 'cash', name: 'Efectivo', icon: 'dollar-sign' as const}, ...platforms.filter(p => p.active).map(p => ({id: p.id, name: p.name, icon: 'smartphone' as const}))].map(m => {
+            {[{id:'mixed',name:'Varios',icon:'layers' as const},{id:'credit',name:'Crédito',icon:'clock' as const},{id: 'cash', name: 'Efectivo', icon: 'dollar-sign' as const}, ...platforms.filter(p => p.active).map(p => ({id: p.id, name: p.name, icon: 'smartphone' as const}))].filter(m=>!offlineReady||m.id==='cash'||m.id==='credit').map(m => {
               const on = pay === m.id;
               return <Pressable key={m.id} accessibilityRole="radio" accessibilityLabel={m.name} accessibilityState={{checked: on}} onPress={() => {setPay(m.id);setReference('');setCredit(m.id==='credit');}}
                 style={[{flexGrow: 1, flexBasis: '45%', minHeight: 56, borderRadius: 12, borderWidth: on ? 2 : 1, borderColor: on ? colors.accent : colors.lineStrong, backgroundColor: on ? colors.accentSoft : colors.white, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12}]}>
@@ -216,7 +221,7 @@ export function SaleScreen({route,userId, active, session, products:rawProducts,
               </Pressable>;
             })}
           </View>
-          {method==='credit'&&<><View style={styles.row}><Text style={styles.label}>Registrar abono inicial</Text><Switch accessibilityLabel="Registrar abono inicial" value={hasInitial} onValueChange={setHasInitial}/></View>{hasInitial&&<><Field label="Abono inicial" kind="decimal" value={initialPayment} onChange={setInitialPayment}/><SearchSelect label="Medio del abono inicial" items={[{id:'cash',name:'Efectivo'},...platforms.filter(p=>p.active)]} value={initialMethod} onChange={v=>{setInitialMethod(v);setReference('');}}/></>}<Text style={styles.h2}>Saldo pendiente: {cop(total-(initialCents||0))}</Text></>}
+          {method==='credit'&&<><View style={styles.row}><Text style={styles.label}>Registrar abono inicial</Text><Switch accessibilityLabel="Registrar abono inicial" value={hasInitial} onValueChange={setHasInitial}/></View>{hasInitial&&<><Field label="Abono inicial" kind="decimal" value={initialPayment} onChange={setInitialPayment}/><SearchSelect label="Medio del abono inicial" items={[{id:'cash',name:'Efectivo'},...platforms.filter(p=>p.active&&!offlineReady)]} value={initialMethod} onChange={v=>{setInitialMethod(v);setReference('');}}/></>}<Text style={styles.h2}>Saldo pendiente: {cop(total-(initialCents||0))}</Text></>}
           {(method==='electronic'||(method==='credit'&&hasInitial&&initialMethod!=='cash'))&&<Field label="Referencia de pago" value={reference} onChange={setReference} required/>}
           {method==='mixed'&&<>{mixed.map((p,i)=><Card key={i}><SearchSelect label={`Medio de pago ${i+1}`} items={[{id:'cash',name:'Efectivo'},...platforms.filter(x=>x.active)]} value={p.method} onChange={v=>setMixed(mixed.map((x,j)=>i===j?{...x,method:v,reference:''}:x))}/><Field label={`Importe ${i+1}`} kind="decimal" value={p.amount} onChange={v=>setMixed(mixed.map((x,j)=>i===j?{...x,amount:v}:x))}/>{p.method!=='cash'&&<Field label={`Referencia de pago ${i+1}`} value={p.reference} onChange={v=>setMixed(mixed.map((x,j)=>i===j?{...x,reference:v}:x))} required/>}<Button title="Quitar pago" variant="ghost" onPress={()=>setMixed(mixed.filter((_,j)=>j!==i))}/></Card>)}<Button title="Agregar medio de pago" variant="outline" onPress={()=>setMixed([...mixed,{method:'cash',amount:'',reference:''}])}/><Text style={styles.body}>Total factura: {cop(total)}</Text><Text style={styles.body}>Total ingresado: {cop(mixedEntered)}</Text><Text style={mixedEntered===total?styles.h2:styles.fieldError}>{mixedEntered>total?'Excedente: ':'Pendiente: '}{cop(Math.abs(total-mixedEntered))}</Text></>}
           {referenceErrors.map((error,i)=><Text key={i} style={styles.fieldError}>{error}</Text>)}
@@ -230,7 +235,12 @@ export function SaleScreen({route,userId, active, session, products:rawProducts,
         </Card>
         <Text style={[styles.small, {textAlign: 'center'}]}>Al confirmar, el sistema verifica precios, existencias y caja, y genera el comprobante.</Text>
       </> : <>
-        {route&&<View style={[styles.row, {justifyContent: 'flex-start', gap: 6}]}><Feather name="map-pin" size={14} color={colors.muted}/><Text numberOfLines={2} style={[styles.small, {flex: 1}]}>Ruta {route.name} · ventas y abonos se confirman con conexión</Text></View>}
+        {route&&<View style={[styles.row, {justifyContent: 'flex-start', gap: 6}]}><Feather name="map-pin" size={14} color={colors.muted}/><Text numberOfLines={2} style={[styles.small, {flex: 1}]}>Ruta {route.name} · {offlineReady?'Ventas guardadas en la terminal y sincronización automática':'Confirma con conexión o prepara el modo sin internet'}</Text></View>}
+        {offlineEnabled&&<View style={{gap:8}}>
+          {offlineReady&&<Text style={styles.small}>Sin internet puedes vender en efectivo o a crédito con abono en efectivo. Los pagos electrónicos, abonos de cartera, gastos y cierres requieren conexión. Sincroniza y finaliza este modo antes de cambiar entregas o cerrar la ruta.</Text>}
+          <Button title={offlineReady?'Sincronizar y finalizar modo sin internet':'Preparar ventas sin internet'} icon={offlineReady?'refresh-cw':'download'} variant="outline" disabled={busy||!!draft||cart.length>0} onPress={()=>run(async()=>{await api(offlineReady?'/offline-route/release':'/offline-route/prepare','POST',offlineReady?{}:{session_id:session!.id});await refresh();setAgents(await api<Agent[]>('/agents'));},offlineReady?'Ventas sincronizadas; inventario liberado':'Terminal lista para vender sin internet')}/>
+          {!offlineReady&&<Text style={styles.small}>Con conexión y caja abierta, prepara el catálogo, clientes, vendedores y stock de tu ruta. Esa reserva será exclusiva de esta terminal hasta que finalices el modo.</Text>}
+        </View>}
         <SearchSelect label="1. Vendedor" items={agents} value={agent} disabled={!!draft} onChange={id=>{setAgent(id);setCustomer('');}}/>
         {!agents.length&&<Banner text="El administrador debe asociar vendedores a tu usuario."/>}
         {!!agent&&customerCard}

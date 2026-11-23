@@ -41,6 +41,7 @@ function migrate(db) {
   for(const t of triggers)db.exec(t.sql);
  });
  db.exec(readFileSync(new URL('./cash-route-schema.sql', import.meta.url), 'utf8'));
+ db.exec(readFileSync(new URL('./offline-route-schema.sql', import.meta.url), 'utf8'));
 
  // Import only real references already saved in legacy sale snapshots; never invent missing values.
  const legacyReferences=db.prepare("SELECT p.id payment_id,p.platform_id,json_extract(s.snapshot,'$.payment_reference') reference,s.created_at FROM payments p JOIN sales s ON s.id=p.sale_id WHERE p.method='electronic' AND p.platform_id IS NOT NULL AND length(trim(COALESCE(json_extract(s.snapshot,'$.payment_reference'),'')))>0").all();

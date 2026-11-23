@@ -1,6 +1,6 @@
 // Browser uses the cloud directly. Android resolves runtime.native.ts.
 import type {User} from '../types';
-export type SyncStatus={device_id?:string;pending:number;blocked:number;error:string|null;last_sync:string|null;catalog_ready:boolean;running:boolean;online:boolean;notice?:string|null};
+export type SyncStatus={offline_ready?:boolean;device_id?:string;pending:number;blocked:number;error:string|null;last_sync:string|null;catalog_ready:boolean;running:boolean;online:boolean;notice?:string|null};
 export const offlineEnabled=false;
 export async function cachedPrintRecord(_path:string):Promise<any|null>{return null;}
 export async function activateLocal(_user:User,_token:string):Promise<void>{}

@@ -1,3 +1,4 @@
+import {routeRequest,routeProducts} from './route-store.js';
 // Shared, synchronous SQLite business layer. The Android adapter uses expo-sqlite;
 // integration tests use a real node:sqlite file with the same SQL and transactions.
 const LIMIT=100_000_000_000;
@@ -60,7 +61,7 @@ export class LocalStore {
   for(const kind of ['sale','closure','session']){const r=this.get(kind,id);if(r)this.put(kind,{...r,sync_status:'synced',cloud_number:result.cloud_number,sync_warnings:result.warnings||[],...(result.receipt_number?{snapshot:{...r.snapshot,receipt_number:result.receipt_number}}:{})});}
  });}
  block(id,error){this.db.run("UPDATE local_events SET state='blocked',error=? WHERE id=?",error,id);}
- status(){const pending=this.pending();return {device_id:this.deviceId,pending:pending.length,blocked:pending.filter(e=>e.state==='blocked').length,error:pending.find(e=>e.error)?.error||null,last_sync:this.meta('last_sync'),catalog_ready:!!this.catalog};}
+ status(){const pending=this.pending();return {offline_ready:!!this.catalog?.reservation_id,device_id:this.deviceId,pending:pending.length,blocked:pending.filter(e=>e.state==='blocked').length,error:pending.find(e=>e.error)?.error||null,last_sync:this.meta('last_sync'),catalog_ready:!!this.catalog};}
  enqueue(user,type,data,operationId=this.uuid()){
   const sequence=(this.meta('sequence')||0)+1;
   const event={id:operationId,sequence,type,created_at:this.clock(),data};
@@ -69,6 +70,7 @@ export class LocalStore {
  }
  products(user){
   const catalog=this.catalog;if(!catalog)return [];
+  if(catalog.reservation_id&&catalog.user.id===user.id)return routeProducts(this);
   const deductions=new Map();
   for(const row of this.db.all('SELECT payload FROM local_events WHERE sequence>?',catalog.ack_sequence)){
    const e=JSON.parse(row.payload);if(e.type==='sale.create')for(const i of e.data.items)deductions.set(i.product_id,(deductions.get(i.product_id)||0)+i.quantity_milli);
@@ -86,6 +88,7 @@ export class LocalStore {
  session(user,id){const s=this.sessions(user).find(s=>s.id===id);if(!s)fail('Caja no encontrada en este dispositivo.');return s;}
  request(user,path,method='GET',body){
   const saved=this.get('profile',user.id);if(saved?.blocked)fail('El acceso del dispositivo fue revocado. Inicia sesión con conexión. Tus ventas están conservadas.');
+  if(this.catalog?.reservation_id){const result=routeRequest(this,user,path,method,body);if(result!==undefined)return result;if(method!=='GET'||!/^\/(settings|platforms|sales)(\?|\/|$)/.test(path))return undefined;}
   const [route,query='']=path.split('?');
   if(method==='GET'){
    if(route==='/products')return this.products(user);

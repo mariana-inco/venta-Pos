@@ -39,6 +39,7 @@ export async function signOut(){if(offlineEnabled){try{await remote('/auth/logou
 /** Descarga el PDF guardado de la venta/cierre (nunca se recalcula) y lo abre, comparte o imprime. */
 export async function documentAction(path:string,width:58|80,action:'share'|'print'|'open'){
  if(action==='print')action='share';
+ if(offlineEnabled&&path.startsWith('/sales/')){const local=await cachedPrintRecord(path);if(local&&(local.sync_status==='pending'||local.reservation_id)){await localDocument(path,width,action);return;}}
  // Account statements and new route documents are rendered by the server.
  const url=`${API_URL}/api${path}/pdf?width=${width}`;const name=`comprobante-${path.split('/').pop()?.slice(0,8)}-${width}mm.pdf`;
  if(Platform.OS==='web'){

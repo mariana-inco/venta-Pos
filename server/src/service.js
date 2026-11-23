@@ -35,14 +35,15 @@ export function saleDetail(db,user,saleId) {
  if(user.role!=='admin' && dayOf(sale.created_at)!==dayOf(now()))fail(403,'Los vendedores solo pueden consultar ventas de hoy.');
  return {...sale,...balance(db,sale.id),terms:db.prepare('SELECT * FROM sale_terms WHERE sale_id=?').get(sale.id),session_number:sessionNumber(db,sale.session_id),snapshot:JSON.parse(sale.snapshot),items:db.prepare('SELECT * FROM sale_items WHERE sale_id=? ORDER BY rowid').all(saleId),payments:paymentsFor(db,saleId)};
 }
-export function recordSale(db,user,input) {
+export function recordSale(db,user,input,offline=null) {
  return transaction(db,()=>{
   const requestHash=digest(JSON.stringify(input));
   const existing=db.prepare('SELECT id,request_hash FROM sales WHERE seller_id=? AND request_key=?').get(user.id,input.request_key);
   if(existing) {if(existing.request_hash!==requestHash) fail(409,'Esta referencia ya fue usada para otra venta.');return saleDetail(db,user,existing.id);}
   const session=sessionFor(db,user,input.session_id);
   const route=routeFor(db,user);
-  requireOpenRoute(db,route);
+  requireOpenRoute(db,route,offline?.createdAt||now());
+  if(!offline&&db.prepare("SELECT 1 FROM offline_route_reservations WHERE route_id=? AND state<>'released'").get(route?.id||''))fail(409,'Esta ruta está reservada para ventas sin internet. Sincroniza y finaliza ese modo en la terminal.');
   const agent=agentsFor(db,user).find(a=>a.id===input.agent_id);if(!agent)fail(400,'Selecciona un vendedor activo asociado a tu usuario.');
   if(input.credit&&!route)fail(400,'Asigna una ruta antes de facturar a crédito.');
   if(session.device_id&&!route) fail(409,'Registra las ventas de esta caja desde su dispositivo de origen.');
@@ -61,19 +62,19 @@ export function recordSale(db,user,input) {
    if(item.expected_price_cents!==undefined && item.expected_price_cents!==locked.price_cents) fail(409,`El precio de ${p.name} cambió. Actualiza los productos antes de confirmar.`);
    const qty=quantity(item.quantity,p.unit);
    if(!route && p.stock_milli!==null && p.stock_milli<qty) fail(409,`Existencias insuficientes: ${p.name}.`);
-   return {id:id(),product_id:p.id,name:p.name,unit:p.unit,quantity_milli:qty,price_cents:locked.price_cents,subtotal_cents:subtotal(locked.price_cents,qty),tracks_stock:!route&&p.stock_milli!==null};
+   return {id:id(),product_id:p.id,name:offline?.catalog.products.find(x=>x.id===p.id)?.name||p.name,unit:p.unit,quantity_milli:qty,price_cents:locked.price_cents,subtotal_cents:subtotal(locked.price_cents,qty),tracks_stock:!route&&p.stock_milli!==null};
   });
   const total=items.reduce((sum,i)=>sum+i.subtotal_cents,0);
   if(!Number.isSafeInteger(total)||total>100_000_000_000) fail(400,'El total supera el límite permitido.');
   const {credit,paid,lines:paymentLines}=salePayments(db,input,total);
   const received=input.cash_received===undefined?null:money(input.cash_received);
   if(received!==null&&(credit||input.method!=='cash'||received<total))fail(400,'El efectivo recibido debe cubrir la venta de contado.');
-  const saleId=id(); const created=now();
+  const saleId=offline?.id||id(); const created=offline?.createdAt||now();
   const number=db.prepare('SELECT COALESCE(MAX(number),0)+1 AS n FROM sales').get().n;
-  const settings=db.prepare('SELECT * FROM settings WHERE id=1').get();
+  const settings=offline?.catalog.settings||db.prepare('SELECT * FROM settings WHERE id=1').get();
   // Los datos del negocio quedan congelados en la venta: el comprobante histórico no cambia si se editan después.
   const customerDebt=customerBalance(db,customer.id)+total-paid;
-  const snapshot={business_whatsapp:WHATSAPP_NUMBER,customer_balance_cents:customerDebt,receipt_number:claimReceipt(db,saleId),business_name:settings.business_name,business_nit:settings.business_nit,business_address:settings.business_address,business_phone:settings.business_phone,business_city:settings.business_city,customer_name:customer.name,customer_city:customer.city,seller_name:agent.name,user_name:user.name,agent_id:agent.id,customer_type:customerType,price_type:customerType,route_name:route?.name||null,route_id:route?.id||null,credit:!!credit,initial_paid_cents:paid,initial_balance_cents:total-paid,cash_received_cents:received,cash_change_cents:received===null?null:received-total};
+  const snapshot={business_whatsapp:WHATSAPP_NUMBER,customer_balance_cents:customerDebt,receipt_number:claimReceipt(db,saleId,offline?.deviceId||null,offline?.receiptSequence??null),business_name:settings.business_name,business_nit:settings.business_nit,business_address:settings.business_address,business_phone:settings.business_phone,business_city:settings.business_city,customer_name:offline?.customer.name||customer.name,customer_city:offline?.customer.city||customer.city,seller_name:offline?.agent.name||agent.name,user_name:user.name,agent_id:agent.id,customer_type:customerType,price_type:customerType,route_name:route?.name||null,route_id:route?.id||null,credit:!!credit,initial_paid_cents:paid,initial_balance_cents:total-paid,cash_received_cents:received,cash_change_cents:received===null?null:received-total};
   db.prepare('INSERT INTO sales VALUES (?,?,?,?,?,?,?,?,?,?)').run(saleId,number,session.id,user.id,customer.id,created,total,JSON.stringify(snapshot),input.request_key,requestHash);
   db.prepare('INSERT INTO sale_terms VALUES (?,?,?,?)').run(saleId,route?.id||null,Number(!!credit),paid);
   db.prepare('INSERT INTO sale_agents VALUES (?,?)').run(saleId,agent.id);
@@ -84,7 +85,7 @@ export function recordSale(db,user,input) {
   }
   for(const p of paymentLines){const pid=id();db.prepare('INSERT INTO payments VALUES (?,?,?,?,?,?)').run(pid,saleId,p.method,p.platform_id,p.platform_name,p.amount_cents);if(p.method==='electronic')saveReference(db,{platform_id:p.platform_id,reference:p.reference,payment_id:pid});}
   audit(db,user.id,'sale.create',saleId,{session_id:session.id,total_cents:total});
-  return saleDetail(db,user,saleId);
+  return saleDetail(db,offline?{...user,role:'admin'}:user,saleId);
  });
 }
 export function closureDetail(db,closureId) {
@@ -99,6 +100,7 @@ export function closeSession(db,user,sessionId,input,offline=null,administrative
   if(administrative&&(!administrative.devices_synced||administrative.amounts!=='recorded'||offline))fail(400,'El cierre administrativo exige confirmar la sincronización y usar los saldos revisados.');
   if(session.device_id && offline?.deviceId!==session.device_id&&!administrative) fail(409,'Cierra esta caja desde su dispositivo de origen para incluir todas las ventas sin conexión.');
   if(session.state!=='open') fail(409,'La caja ya está cerrada. Consulta su cierre en el historial.');
+  if(db.prepare("SELECT 1 FROM offline_route_reservations WHERE session_id=? AND state<>'released'").get(session.id))fail(409,'Sincroniza y finaliza el modo sin internet antes de cerrar la caja.');
   const computed=totals(db,session.id);
   if(input.reviewed_sale_count!==undefined && input.reviewed_sale_count!==computed.sale_count) fail(409,'Se registraron ventas después de revisar la caja. Cancela y vuelve a abrir la conciliación con los totales actualizados.');
   const declaredCash=money(input.declared_cash),declaredElectronic=money(input.declared_electronic);

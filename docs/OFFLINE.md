@@ -1,5 +1,7 @@
 # Operación Android sin conexión y sincronización
 
+Para ventas por ruta de la versión 1.3.5, consultar [Ventas sin internet](VENTAS-SIN-INTERNET-1.3.5.md). Las reglas siguientes describen el protocolo anterior; no sustituyen la preparación y reserva de ruta actuales.
+
 Implementación del 28 de octubre de 2026. La web sigue siendo un cliente conectado a la API. El APK Android tiene una base SQLite propia y puede operar sin conexión después de descargar su primer catálogo.
 
 ## Componentes

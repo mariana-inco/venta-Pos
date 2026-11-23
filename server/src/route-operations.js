@@ -1,3 +1,4 @@
+import {assertRouteNotReserved} from './offline-route.js';
 import {activeRouteClosure} from './route-state.js';
 import {id,now,transaction,audit} from './db.js';
 import {digest} from './auth.js';
@@ -17,6 +18,7 @@ export function setCustomerRoute(db,user,customerId,routeId,identification=''){
 export function replaceDelivery(db,user,d){return transaction(db,()=>{
  const hash=digest(JSON.stringify(d)),old=db.prepare('SELECT * FROM delivery_batches WHERE request_key=?').get(d.request_key);if(old){if(old.request_hash!==hash)fail(409,'Referencia usada con otra entrega.');return old;}
  const route=db.prepare('SELECT * FROM routes WHERE id=? AND active=1').get(d.route_id);requireOpenRoute(db,route);
+ assertRouteNotReserved(db,route.id);
  const batch=id(),at=now(),targets=new Map(),items=[],seen=new Set();
  for(const i of d.items){if(seen.has(i.product_id))fail(400,'No repitas productos.');seen.add(i.product_id);const p=db.prepare('SELECT * FROM products WHERE id=? AND active=1').get(i.product_id);if(!p)fail(400,'Producto desactivado o no disponible.');const qty=quantity(i.quantity,p.unit);let group=db.prepare('SELECT group_id FROM product_groups WHERE product_id=?').get(p.id)?.group_id;
   if(!group){group=id();db.prepare('INSERT INTO inventory_groups VALUES (?,?,?)').run(group,p.name+' · '+group.slice(0,6),p.unit);db.prepare('INSERT INTO product_groups VALUES (?,?)').run(p.id,group);}
@@ -33,6 +35,7 @@ export function replaceDelivery(db,user,d){return transaction(db,()=>{
  });}
 export function closeRoute(db,user,at=now()){return transaction(db,()=>{
  const route=routeFor(db,user);requireOpenRoute(db,route,at);const day=dayOf(at),key=id();
+ assertRouteNotReserved(db,route.id);
  const financial=results(db,{route_id:route.id,from:day,to:day}),inventory=inventoryReport(db,route.id,day,day);
  const snapshot={version:3,stock_movement_cursor:db.prepare('SELECT COALESCE(MAX(rowid),0) n FROM stock_movements').get().n,route:{...route},responsible:{id:user.id,name:user.name},day,closed_at:at,total_cents:financial.total_cents,financial,inventory};
  db.prepare('INSERT INTO daily_closures VALUES (?,?,?,?,?,?)').run(key,route.id,day,user.id,at,JSON.stringify(snapshot));

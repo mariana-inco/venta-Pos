@@ -10,11 +10,12 @@ import {API_URL,ApiError,remote} from '../transport';
 import type {User} from '../types';
 import {printerConfig} from '../printing/printer';
 import {outputLocalDocument} from '../printing/documents';
-export type SyncStatus={device_id?:string;pending:number;blocked:number;error:string|null;last_sync:string|null;catalog_ready:boolean;running:boolean;online:boolean;notice?:string|null};
+export type SyncStatus={offline_ready?:boolean;device_id?:string;pending:number;blocked:number;error:string|null;last_sync:string|null;catalog_ready:boolean;running:boolean;online:boolean;notice?:string|null};
 export const offlineEnabled=true;
 let instance:Promise<LocalStore>|null=null;
 let prefix='';
 let running:Promise<void>|null=null;
+let routeTransition=false;
 let online=true,lastError:string|null=null,notice:string|null=null;
 const listeners=new Set<(s:SyncStatus)=>void>();
 const TASK='venta-pos-sync-v1';
@@ -66,10 +67,31 @@ export async function restoreLocal():Promise<User|null>{
 export async function forgetLocal(){await store();await SecureStore.deleteItemAsync(prefix+'-active');}
 export async function localRequest(user:User,path:string,method:string,body?:unknown){
  const s=await store();
+ if(routeTransition&&method!=='GET')throw new ApiError('Espera a que termine la preparación o sincronización de la ruta.',409);
  const route=s.meta('route-'+user.id);
+ if(path==='/offline-route/prepare'&&method==='POST'){
+  routeTransition=true;try{
+  await syncNow(true);if(s.pending().length)throw new ApiError('Sincroniza las operaciones pendientes antes de preparar la ruta.',409);
+  const grant=await SecureStore.getItemAsync(grantKey(user.id));if(!grant)throw new ApiError('Inicia sesión con conexión para preparar esta terminal.',409);
+  const catalog=await remote<any>('/sync/route/prepare','POST',body,grant);s.applyCatalog(catalog);s.setMeta('route-'+user.id,catalog.route);await emit();return {handled:true,value:catalog.route};
+  }finally{routeTransition=false;}
+ }
+ if(path==='/offline-route/release'&&method==='POST'){
+  routeTransition=true;try{
+  await syncNow(true);if(s.pending().length)throw new ApiError('Hay ventas pendientes. Conecta y sincroniza antes de finalizar el modo sin internet.',409);
+  const grant=await SecureStore.getItemAsync(grantKey(user.id));if(!grant)throw new ApiError('Inicia sesión con conexión para sincronizar.',409);
+  await remote('/sync/route/release','POST',{sequence:s.meta('sequence')||0},grant);
+  const catalog=await remote<any>('/sync/catalog','GET',undefined,grant);s.applyCatalog(catalog);s.setMeta('route-'+user.id,catalog.route);await emit();return {handled:true,value:{ok:true}};
+  }finally{routeTransition=false;}
+ }
+ if(s.catalog?.reservation_id&&s.catalog.user.id===user.id){
+  try{const value=s.request(user,path,method,body);if(value!==undefined){if(method!=='GET'){void emit();void syncNow();}return {handled:true,value};}}
+  catch(e){if(e instanceof Error&&'status' in e)throw new ApiError(e.message,Number(e.status),`${method} ${path}`);throw e;}
+ }
+
  if(path==='/route'&&method==='GET'){try{const token=await SecureStore.getItemAsync('pos-token')||'';const currentRoute=await remote<any>('/route','GET',undefined,token,5000);s.setMeta('route-'+user.id,currentRoute);return {handled:true,value:currentRoute};}catch(e){if(!(e instanceof ApiError)||e.status!==0)throw e;return {handled:true,value:route||null};}}
  const legacyClose=path.match(/^\/cash-sessions\/([^/]+)\/close$/);
- if(method==='POST'&&legacyClose&&s.get('session',legacyClose[1])){const value=s.request(user,path,method,body);void emit();void syncNow();return {handled:true,value};}
+ if(method==='POST'&&!s.catalog?.reservation_id&&legacyClose&&s.get('session',legacyClose[1])){const value=s.request(user,path,method,body);void emit();void syncNow();return {handled:true,value};}
  // New route commerce is always validated atomically on the server. Old queued events remain synchronizable.
  if(route||/^\/(products|customers|sales|cash-sessions|settings|platforms)/.test(path))return {handled:false};
  const sessionMatch=path.match(/^\/cash-sessions\/([^/?]+)/);if(sessionMatch&&!s.get('session',sessionMatch[1]))return {handled:false};
@@ -81,7 +103,8 @@ export async function localRequest(user:User,path:string,method:string,body?:unk
  if(method!=='GET'){void emit();void syncNow();}
  return {handled:true,value};
 }
-export async function syncNow(){
+export async function syncNow(transition=false){
+ if(routeTransition&&!transition)return;
  if(running)return running;
  running=(async()=>{
   const s=await store();lastError=null;
