@@ -14,7 +14,7 @@ export function prepareOfflineRoute(db,user,deviceId,sessionId,catalogFactory){r
  const session=sessionFor(db,user,sessionId);if(session.opened_by!==user.id||session.state!=='open')fail(403,'Prepara tu propia caja abierta.');
  if(db.prepare("SELECT 1 FROM offline_route_reservations WHERE device_id=? AND state<>'released'").get(deviceId))fail(409,'La terminal ya tiene una ruta reservada.');
  const catalog=catalogFactory(),key=id();
- catalog.customers=catalog.customers.map(c=>({...c,balance_cents:customerBalance(db,c.id)}));
+ catalog.customers=catalog.customers.filter(c=>c.route_id===route.id||c.routes?.some(r=>r.id===route.id)).map(c=>({...c,balance_cents:customerBalance(db,c.id)}));
  const payload={...catalog,sales_policy:'route-offline-v1',agents:agentsFor(db,user),session:{...session,...totals(db,session.id)},reservation_id:key,reservation_day:dayOf(now()),reservation_sequence:catalog.ack_sequence,receipt_ranges:reserveReceipts(db,deviceId)};
  payload.version=digest(JSON.stringify(payload));
  db.prepare('INSERT INTO offline_route_reservations VALUES (?,?,?,?,?,?,?,?,?,?)').run(key,deviceId,user.id,route.id,session.id,payload.reservation_day,now(),null,JSON.stringify(payload),'active');
@@ -37,7 +37,7 @@ export function ingestRouteSale(db,user,deviceId,event){
  if(!customer||!agent)fail(403,'Cliente o vendedor no autorizado en el catálogo reservado.');
  const prices={};for(const p of c.products.filter(p=>p.active))prices[p.id]={price_cents:customer.customer_type==='wholesale'?p.wholesale_price_cents:p.price_cents,unit:p.unit};
  const old=db.prepare('SELECT * FROM sale_drafts WHERE id=?').get(event.id);
- if(old&&(old.user_id!==user.id||old.customer_id!==input.customer_id||old.agent_id!==input.agent_id))fail(409,'Referencia de venta utilizada.');
+ if(old&&(old.user_id!==user.id||old.customer_id!==input.customer_id||old.agent_id!==input.agent_id||old.route_id!==r.route_id||old.customer_type!==(customer.customer_type||'normal')||old.prices!==JSON.stringify(prices)))fail(409,'Referencia de venta utilizada.');
  if(!old)db.prepare('INSERT INTO sale_drafts VALUES (?,?,?,?,?,?,?,?,?)').run(event.id,user.id,agent.id,customer.id,r.route_id,customer.customer_type||'normal',JSON.stringify(prices),digest(JSON.stringify({customer_id:customer.id,agent_id:agent.id})),event.created_at);
  db.prepare("UPDATE offline_route_reservations SET state='syncing' WHERE id=?").run(r.id);
  const sale=recordSale(db,user,input,{id:event.id,createdAt:event.created_at,deviceId,receiptSequence:d.receipt_sequence,catalog:c,customer,agent});

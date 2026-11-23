@@ -72,7 +72,8 @@ test('Ruta offline: fallo durante descuento revierte venta, pagos, stock, estado
 test('Ruta offline: permisos, manipulación, límites de jornada y reservas concurrentes',async t=>{
  t.mock.timers.enable({apis:['Date'],now:new Date('2026-11-23T18:00:00Z')});
  const f=await fixture();try{
- const reserve=await Promise.all([f.request('/sync/route/prepare',{session_id:f.session}),f.request('/sync/route/prepare',{session_id:f.session})]);assert.equal(reserve[0].reservation_id,reserve[1].reservation_id);f.store.applyCatalog(reserve[0]);
+ const foreignRoute=randomUUID(),foreignCustomer=randomUUID();f.db.prepare('INSERT INTO routes(id,name) VALUES(?,?)').run(foreignRoute,'Ajena');f.db.prepare('INSERT INTO customers VALUES(?,?,?,?,?,?)').run(foreignCustomer,'Ajeno','Bogotá',1,new Date().toISOString(),new Date().toISOString());f.db.prepare('INSERT INTO customer_routes(customer_id,route_id) VALUES(?,?)').run(foreignCustomer,foreignRoute);
+ const reserve=await Promise.all([f.request('/sync/route/prepare',{session_id:f.session}),f.request('/sync/route/prepare',{session_id:f.session})]);assert.equal(reserve[0].reservation_id,reserve[1].reservation_id);f.store.applyCatalog(reserve[0]);assert.equal(reserve[0].customers.some(c=>c.id===foreignCustomer),false);
  const {sale}=f.sell();const event=f.store.pending()[0].event;
  const altered=structuredClone(event);altered.data.input.items[0].expected_price_cents=1;const rejection=await f.request('/sync/events',{events:[altered]});assert.equal(rejection.rejected.status,409);assert.equal(f.db.prepare('SELECT COUNT(*) n FROM sales').get().n,0);
  const stranger=await f.request('/sync/events',{events:[event]},f.second.token);assert.equal(stranger.rejected.status,409);
@@ -82,6 +83,6 @@ test('Ruta offline: permisos, manipulación, límites de jornada y reservas conc
  assert.throws(()=>f.sell(),/jornada/);
  // Yesterday's recorded sale can upload today, retaining its original sale date.
  const accepted=await f.request('/sync/events',{events:[event]});assert.equal(accepted.accepted.length,1);assert.equal(f.db.prepare('SELECT created_at FROM sales').get().created_at,event.created_at);
- assert.equal(f.db.prepare('SELECT COUNT(*) n FROM customers').get().n,2);assert.equal(f.db.prepare('SELECT COUNT(*) n FROM products').get().n,2);
+ assert.equal(f.db.prepare('SELECT COUNT(*) n FROM customers').get().n,3);assert.equal(f.db.prepare('SELECT COUNT(*) n FROM products').get().n,2);
  }finally{await f.close();t.mock.timers.reset();}
 });
