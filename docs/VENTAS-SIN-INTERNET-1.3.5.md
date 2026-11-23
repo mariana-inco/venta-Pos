@@ -37,3 +37,7 @@ Los pagos electrónicos/VARIOS y su validación global de referencias continúan
 ## Actualización del servidor
 
 Aplicar servidor antes del APK. Se realizó respaldo consistente y ensayo de la migración sobre una copia de producción: las **52 tablas previas** conservaron exactamente sus filas (SHA256); integrity_check ok y foreign_key_check sin errores. Copia: `/data/backups/before-offline-1.3.5-2026-11-23T20-50-07.064Z.sqlite`. En ese instante: 8 ventas, 28 clientes, 16 productos y 2 cajas. La operación comercial puede continuar y aumentar esos conteos; no se usan como objetivos de limpieza.
+
+APK: `output/dok-pollo-mc-1.3.5-neotek.apk` (versionCode 16, ARM32/ARM64). SHA256: `27e1bbe1179e0fe404c64210add5554510e7f3bd66c79084e5ab8125cb8de85c`.
+
+Producción: Coolify `aiaqm7fuoy2q7vsvhsnrbwet`, código `a3b010256d31f2c8ed0917fadceba747eb563e05`, rama `deploy/backend-pos`, terminado el 23/11/2026 a las 15:54:32 Colombia. Contenedor `0sxtn0nojcnijnl1dxn7rmev-20261123T205355`, saludable. `/health` 200; preparación sin credenciales 401. Verificación posterior de solo lectura: 8 ventas, 28 clientes, 16 productos y 2 cajas, ningún identificador del respaldo ausente; integrity_check ok, foreign_key_check vacío. Reservas iniciales 0 (ninguna activada sobre clientes reales para probar). Generación `d2aba284-376a-41e4-85be-60386101e41c` conservada, sin forzar reinicio de datos en las terminales.
