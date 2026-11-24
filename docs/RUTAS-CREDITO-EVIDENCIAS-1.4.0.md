@@ -38,7 +38,7 @@ El modo Android sin internet conserva sus reservas y cola. Usa la deuda conocida
 
 ### Gastos con fotografías
 
-Cámara/galería, vista previa, cambio o eliminación antes de guardar; permisos de cámara bajo demanda. Cliente optimiza a JPEG de hasta 1600 px, servidor valida JPEG/PNG/WebP, máximo 5 MB y 20 millones de píxeles, elimina metadatos y crea JPEG optimizado + miniatura de hasta 320 px. No admite SVG ni imágenes animadas. Carga con porcentaje, referencia idempotente y reintento; gasto y asociación se graban atómicamente.
+Cámara/galería, vista previa, cambio o eliminación antes de guardar; permisos de cámara bajo demanda. Cliente optimiza a JPEG de hasta 1600 px, servidor valida JPEG/PNG/WebP, máximo 5 MB y 20 millones de píxeles, elimina metadatos y crea JPEG optimizado + miniatura de hasta 320 px. No admite SVG ni imágenes animadas. Carga con porcentaje, referencia idempotente y reintento; un gasto con respuesta incierta se conserva en el dispositivo con la misma referencia, incluso al salir del módulo, y se recupera antes de permitir crear otro; gasto y asociación se graban atómicamente.
 
 Los archivos se almacenan junto a la SQLite en `expense-evidence/`; la base solo guarda referencias y metadatos, nunca Base64. Las rutas de lectura requieren autenticación y rol administrador o propietario. No hay URLs públicas de fotografías ni credenciales en enlaces.
 
@@ -64,7 +64,7 @@ Modificados:
 
 - `npm test`: 40/40. Aperturas independientes, permisos, duplicados/concurrencia, entregas adicionales, ajustes, totales y cierre con fallo inyectado/rollback, nuevos ciclos, histórico inmutable, eliminación lógica de grupos, los tres casos de crédito, abono simultáneo, referencias y reversión transaccional, permisos de imagen, formatos/tamaños, carga idempotente, miniaturas, Colombia/fechas y páginas. Las regresiones de facturación, cartera, caja, permisos y modo sin internet se mantienen.
 - `npm run check`: TypeScript correcto.
-- E2E web 320/390/768/1280 px: flujo existente completo y fotos reales de prueba seleccionadas por galería, miniatura y ampliación. Verifica que antes de ampliar no se solicita imagen completa. Vista reducida a 420 px simula espacio de teclado; buscador y resultados visibles. Capturas en `output/screenshots/business/`.
+- E2E web 320/390/768/1280 px: flujo existente completo y fotos reales de prueba seleccionadas por galería, miniatura y ampliación. Verifica que antes de ampliar no se solicita imagen completa y simula una respuesta de gasto perdida después de guardarlo: salir, volver y reintentar conserva un solo gasto. Vista reducida a 420 px simula espacio de teclado; buscador y resultados visibles. Capturas en `output/screenshots/business/`.
 - PDF de los tres casos en `output/pdf/credito-desglose-caso-{1,2,3}-58mm.pdf`, una página, ancho físico 58 mm, altura dinámica; inspección visual sin cortes.
 - Android 1.4.0, versionCode 17, ARM32/ARM64: compila. Mismo certificado y applicationId para actualizar sin desinstalar. Se resolvió un fallo TLS de Gradle descargando el artefacto AndroidX oficial y comprobando su checksum; no se bajó ninguna protección/versión.
 - Ensayo aditivo sobre copia de producción: 53 tablas anteriores conservaron exactamente sus registros (SHA256), doble ejecución correcta, integridad ok y sin errores de FK. Respaldo: `/data/backups/before-routes-evidence-1.4.0-2026-11-24T02-52-46.115Z.sqlite`. En ese instante: 12 ventas, 30 clientes, 16 productos, 2 cajas y 1 cierre de ruta, sin reserva offline activa. No se insertaron ventas de prueba en producción.
@@ -81,4 +81,4 @@ Pendiente físico: no hay Neotek conectado por ADB; falta comprobar en el equipo
 
 Referencias de integración: [Expo ImagePicker](https://docs.expo.dev/versions/latest/sdk/imagepicker/), [Sharp: límites de imagen](https://sharp.pixelplumbing.com/api-constructor/).
 
-APK: `output/dok-pollo-mc-1.4.0-neotek.apk`. SHA256: `0d5830e4933e239bab506914b7fad28f064bff9ccfb883e9bdaccce1451007b9`. Certificado SHA256: `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`.
+APK: `output/dok-pollo-mc-1.4.0-neotek.apk`. SHA256: `a0f85ae550aee1ddd1da44304db135e5f26119bac9de0754a78d056279ed34c8`. Certificado SHA256: `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`.
