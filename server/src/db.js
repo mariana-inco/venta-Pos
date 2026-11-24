@@ -1,3 +1,4 @@
+import {migrateRouteCycles} from './route-cycles.js';
 import {migrateReceiptNumbers} from './receipt-numbers.js';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync, mkdirSync } from 'node:fs';
@@ -10,7 +11,7 @@ export function openDatabase(path = process.env.DATABASE_PATH || './data/pos.sql
  const db = new DatabaseSync(path);
  db.exec(readFileSync(new URL('./schema.sql', import.meta.url), 'utf8'));
  migrate(db);
- for (const table of ['sales','sale_items','payments','closures','closure_notes','audit','documents','sync_events','offline_sales','catalog_versions','sync_issues','stock_movements','sale_terms','sale_voids','collections','collection_allocations','collection_reversals','sale_stock_effects','receipt_numbers','receipt_ranges','sale_agents','delivery_batches','delivery_items','daily_closures','sale_drafts','payment_references','route_reopenings','cash_expenses']) {
+ for (const table of ['sales','sale_items','payments','closures','closure_notes','audit','documents','sync_events','offline_sales','catalog_versions','sync_issues','stock_movements','sale_terms','sale_voids','collections','collection_allocations','collection_reversals','sale_stock_effects','receipt_numbers','receipt_ranges','sale_agents','delivery_batches','delivery_items','daily_closures','sale_drafts','payment_references','route_reopenings','cash_expenses','route_openings','route_cycle_closures','route_operation_links','expense_evidence','expense_evidence_links']) {
   for (const operation of ['UPDATE','DELETE']) db.exec(`CREATE TRIGGER IF NOT EXISTS ${table}_no_${operation} BEFORE ${operation} ON ${table} BEGIN SELECT RAISE(ABORT,'Registro inmutable'); END;`);
  }
  return db;
@@ -42,6 +43,9 @@ function migrate(db) {
  });
  db.exec(readFileSync(new URL('./cash-route-schema.sql', import.meta.url), 'utf8'));
  db.exec(readFileSync(new URL('./offline-route-schema.sql', import.meta.url), 'utf8'));
+ db.exec(readFileSync(new URL('./route-cycle-schema.sql', import.meta.url), 'utf8'));
+ migrateRouteCycles(db);
+ db.exec(readFileSync(new URL('./expense-evidence-schema.sql', import.meta.url), 'utf8'));
 
  // Import only real references already saved in legacy sale snapshots; never invent missing values.
  const legacyReferences=db.prepare("SELECT p.id payment_id,p.platform_id,json_extract(s.snapshot,'$.payment_reference') reference,s.created_at FROM payments p JOIN sales s ON s.id=p.sale_id WHERE p.method='electronic' AND p.platform_id IS NOT NULL AND length(trim(COALESCE(json_extract(s.snapshot,'$.payment_reference'),'')))>0").all();

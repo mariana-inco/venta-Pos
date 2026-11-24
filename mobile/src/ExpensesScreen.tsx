@@ -1,32 +1,39 @@
+import {Image,View} from 'react-native';
+import {pickEvidence,EvidenceThumbnail} from './ExpenseEvidence';
 import React,{useEffect,useRef,useState} from 'react';
 import {Text} from 'react-native';
 import * as Crypto from 'expo-crypto';
-import {api} from './api';
-import {Button,Card,Empty,Field,Header,InfoRow,Page,Section,cop,date,moneyToCents,normalizeMoney,styles} from './ui';
+import {api,uploadExpenseEvidence} from './api';
+import {Button,Card,Empty,Field,Header,InfoRow,Page,Section,cop,date,moneyToCents,normalizeMoney,styles,bogotaDay} from './ui';
 import {SearchSelect} from './SearchSelect';
 import type {CashSession,User} from './types';
 import type {Run} from '../App';
 export function ExpensesScreen({user,sessions,run,busy,refresh,onBack}:{user:User;sessions:CashSession[];run:Run;busy:boolean;refresh:()=>Promise<void>;onBack:()=>void}){
  const choices=sessions.filter(s=>user.role==='admin'||s.opened_by===user.id);
- const [sessionId,setSessionId]=useState(choices.find(s=>s.opened_by===user.id&&s.state==='open')?.id||choices[0]?.id||''),[data,setData]=useState<any>(null),[description,setDescription]=useState(''),[amount,setAmount]=useState('');
+ const [sessionId,setSessionId]=useState(user.role==='admin'?'':choices.find(s=>s.opened_by===user.id&&s.state==='open')?.id||choices[0]?.id||''),[data,setData]=useState<any>(null),[description,setDescription]=useState(''),[amount,setAmount]=useState('');
+ const [photo,setPhoto]=useState(''),[progress,setProgress]=useState<number|null>(null),[from,setFrom]=useState(bogotaDay()),[to,setTo]=useState(bogotaDay()),[list,setList]=useState<any[]>([]),[page,setPage]=useState(1),[count,setCount]=useState(0);
+ const photoRequest=useRef({uri:'',key:'',id:''});
  const request=useRef<{signature:string;key:string}|null>(null),session=choices.find(s=>s.id===sessionId);
- async function load(){setData(sessionId?await api('/cash-sessions/'+sessionId+'/expenses'):null);}
+ async function listLoad(next=1){const q=new URLSearchParams({from,to,page:String(next)});if(sessionId)q.set('session_id',sessionId);const r=await api<any>('/expenses?'+q);setList(r.expenses);setCount(r.count);setPage(next);}
+ async function load(){setData(sessionId?await api('/cash-sessions/'+sessionId+'/expenses'):null);await listLoad();}
  useEffect(()=>{setData(null);run(load);},[sessionId]);
  const cents=moneyToCents(amount),canAdd=session?.state==='open'&&session.opened_by===user.id;
  async function save(){
-  const body={session_id:sessionId,description:description.trim(),amount:normalizeMoney(amount)},signature=JSON.stringify(body);
+  let evidenceId:string|undefined;if(photo){if(photoRequest.current.uri!==photo)photoRequest.current={uri:photo,key:Crypto.randomUUID(),id:''};if(!photoRequest.current.id){setProgress(0);try{photoRequest.current.id=await uploadExpenseEvidence(photo,sessionId,photoRequest.current.key,setProgress);}finally{setProgress(null);}}evidenceId=photoRequest.current.id;}
+  const body={evidence_id:evidenceId,session_id:sessionId,description:description.trim(),amount:normalizeMoney(amount)},signature=JSON.stringify(body);
   if(request.current?.signature!==signature)request.current={signature,key:Crypto.randomUUID()};
   await api('/expenses','POST',{...body,request_key:request.current.key});
-  request.current=null;setDescription('');setAmount('');await load();await refresh();
+  request.current=null;setDescription('');setAmount('');setPhoto('');photoRequest.current={uri:'',key:'',id:''};await load();await refresh();
  }
  return <Page onRefresh={()=>run(load)}><Header title="Gastos" subtitle="Pagados en efectivo de la caja" onBack={onBack} backLabel="Volver a Más"/>
   {choices.length?<>
-   <Card><SearchSelect label="Caja" items={choices.map(s=>({id:s.id,name:`Caja #${s.number||''} · ${s.opener_name} · ${s.state==='open'?'Abierta':'Cerrada'} · ${date(s.opened_at)}`}))} value={sessionId} onChange={setSessionId}/>{data&&<><InfoRow label="Efectivo disponible" value={cop(data.available_cash_cents)} strong/><InfoRow label="Total de gastos" value={cop(data.total_cents)}/></>}</Card>
+   <Card><SearchSelect label="Caja" items={[...(user.role==='admin'?[{id:'',name:'Todas las cajas'}]:[]),...choices.map(s=>({id:s.id,name:`Caja #${s.number||''} · ${s.opener_name} · ${s.state==='open'?'Abierta':'Cerrada'} · ${date(s.opened_at)}`}))]} value={sessionId} onChange={id=>{setSessionId(id);setPhoto('');photoRequest.current={uri:'',key:'',id:''};}}/>{data&&<><InfoRow label="Efectivo disponible" value={cop(data.available_cash_cents)} strong/><InfoRow label="Total de gastos" value={cop(data.total_cents)}/></>}</Card>
    {canAdd?<Card><Field label="¿Qué gasto fue?" value={description} onChange={setDescription} placeholder="Ej. Transporte" testID="expense-description"/><Field label="Valor del gasto" kind="decimal" prefix="$" value={amount} onChange={setAmount} placeholder="0" testID="expense-amount"/>
+    <Text style={styles.label}>Evidencia del gasto (opcional)</Text><View style={styles.wrap}><Button title="Tomar fotografía" icon="camera" variant="outline" disabled={busy} onPress={()=>run(async()=>{const uri=await pickEvidence(true);if(uri)setPhoto(uri);})}/><Button title="Elegir de galería" icon="image" variant="outline" disabled={busy} onPress={()=>run(async()=>{const uri=await pickEvidence(false);if(uri)setPhoto(uri);})}/></View>{!!photo&&<><Image source={{uri:photo}} style={{height:180,width:'100%'}} resizeMode="contain"/><Button title="Quitar fotografía" variant="ghost" disabled={busy} onPress={()=>setPhoto('')}/></>}{progress!==null&&<Text style={styles.small}>Cargando evidencia: {progress}%</Text>}
     <Button title="Guardar gasto" icon="minus-circle" disabled={busy||!data||!description.trim()||description.trim().length>240||cents===null||cents<=0||cents>(data?.available_cash_cents??0)} onPress={()=>run(save,'Gasto guardado')} testID="save-expense"/>
     {cents!==null&&cents>(data?.available_cash_cents??0)&&<Text style={styles.small}>El gasto supera el efectivo disponible.</Text>}
    </Card>:<Text style={styles.small}>Solo puedes agregar gastos en tu propia caja abierta.</Text>}
-   <Section title="Resumen de gastos">{data?.expenses?.length?data.expenses.map((e:any)=><Card key={e.id}><InfoRow label={e.description} value={cop(e.amount_cents)} strong/><Text style={styles.small}>{e.user_name} · {date(e.created_at)}</Text></Card>):<Empty icon="file-text" title="Sin gastos" text="Los gastos de esta apertura aparecerán aquí."/>}</Section>
+   <Section title="Resumen de gastos"><View style={styles.wrap}><Field label="Fecha inicial" value={from} onChange={setFrom}/><Field label="Fecha final" value={to} onChange={setTo}/></View><Button title="Consultar gastos" variant="outline" disabled={busy} onPress={()=>run(()=>listLoad(1))}/>{list.length?list.map((e:any)=><Card key={e.id}><InfoRow label={e.description} value={cop(e.amount_cents)} strong/><Text style={styles.small}>{e.user_name} · {date(e.created_at)}</Text>{e.evidence_id?<EvidenceThumbnail id={e.evidence_id}/>:<Text style={styles.small}>Sin evidencia fotográfica</Text>}</Card>):<Empty icon="file-text" title="Sin gastos en este rango" text="Por defecto se muestran los gastos de hoy."/>}<Text style={styles.small}>Página {page} · {count} gastos en este rango</Text>{page>1&&<Button title="Página anterior" disabled={busy} variant="outline" onPress={()=>run(()=>listLoad(page-1))}/>} {page*30<count&&<Button title="Página siguiente" disabled={busy} variant="outline" onPress={()=>run(()=>listLoad(page+1))}/>}</Section>
   </>:<Empty icon="inbox" title="Abre tu caja" text="Necesitas una caja abierta para registrar gastos."/>}
  </Page>;
 }

@@ -2,7 +2,7 @@
   "expo": {
     "name": "DOK POLLO MC",
     "slug": "venta-pos",
-    "version": "1.3.5",
+    "version": "1.4.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "scheme": "ventapos",
@@ -16,14 +16,22 @@
     "android": {
       "package": "com.ventapos.mobile",
       "allowBackup": false,
-      "versionCode": 16
+      "versionCode": 17
     },
     "plugins": [
       "expo-secure-store",
       "expo-sqlite",
       "expo-background-task",
       "./plugins/with-local-network.cjs",
-      "./plugins/with-release-keep-rules.cjs"
+      "./plugins/with-release-keep-rules.cjs",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Selecciona comprobantes para evidencias de gastos.",
+          "cameraPermission": "Toma fotografías de comprobantes de gastos.",
+          "microphonePermission": false
+        }
+      ]
     ],
     "web": {
       "bundler": "metro",

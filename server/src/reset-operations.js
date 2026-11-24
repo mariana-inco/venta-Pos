@@ -4,7 +4,7 @@ import {resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
 import {dataGeneration} from './data-generation.js';
-const tables=['offline_route_reservations','route_reopenings','cash_expenses','payment_references','documents','closure_notes','closures','collection_allocations','collection_reversals','collections','sale_agents','sale_terms','sale_voids','sale_stock_effects','stock_movements','offline_sales','sync_issues','sale_items','payments','receipt_numbers','receipt_ranges','sales','sale_drafts','daily_closures','delivery_items','delivery_batches','cash_sessions','stock_debts','sync_events','device_catalogs','catalog_versions','device_access','sync_devices','auth_sessions'];
+const tables=['expense_evidence_links','expense_evidence','route_operation_links','route_cycle_closures','route_openings','offline_route_reservations','route_reopenings','cash_expenses','payment_references','documents','closure_notes','closures','collection_allocations','collection_reversals','collections','sale_agents','sale_terms','sale_voids','sale_stock_effects','stock_movements','offline_sales','sync_issues','sale_items','payments','receipt_numbers','receipt_ranges','sales','sale_drafts','daily_closures','delivery_items','delivery_batches','cash_sessions','stock_debts','sync_events','device_catalogs','catalog_versions','device_access','sync_devices','auth_sessions'];
 const quote=s=>'"'+s.replaceAll('"','""')+'"';
 export function resetOperations(db,{backupPath,expectedGeneration}){
  if(!backupPath)throw new Error('Se requiere una copia de seguridad verificada.');

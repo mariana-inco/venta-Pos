@@ -28,7 +28,7 @@ const toneColors: Record<Tone, {bg: string; fg: string}> = {
 export function useKeyboardVisible() {
   const [visible, setVisible] = useState(false);
   useEffect(() => {
-    if (Platform.OS === 'web') return;
+    if (Platform.OS === 'web'){const viewport=window.visualViewport;const change=()=>setVisible(!!viewport&&window.innerHeight-viewport.height>120);viewport?.addEventListener('resize',change);return ()=>viewport?.removeEventListener('resize',change);}
     const show = Keyboard.addListener('keyboardDidShow', () => setVisible(true)), hide = Keyboard.addListener('keyboardDidHide', () => setVisible(false));
     return () => { show.remove(); hide.remove(); };
   }, []);
@@ -111,12 +111,12 @@ export function Field({label, value, onChange, placeholder, secure = false, kind
     {shownError ? <View style={styles.fieldErrorRow}><Feather name="alert-circle" size={14} color={colors.red}/><Text style={[styles.fieldError, {flex: 1}]}>{shownError}</Text></View> : hint ? <Text style={styles.hint}>{hint}</Text> : null}
   </View>;
 }
-export function SearchBar({value, onChange, placeholder, autoFocus, testID, inputRef, onSubmit}: {value: string; onChange: (t: string) => void; placeholder: string; autoFocus?: boolean; testID?: string; inputRef?: Ref<React.ComponentRef<typeof TextInput>>; onSubmit?: () => void}) {
+export function SearchBar({value, onChange, placeholder, autoFocus, testID, inputRef, onSubmit,onFocus}: {value: string; onChange: (t: string) => void; placeholder: string; autoFocus?: boolean; testID?: string; inputRef?: Ref<React.ComponentRef<typeof TextInput>>; onSubmit?: () => void;onFocus?:()=>void}) {
   const [focused, setFocused] = useState(false);
   return <View style={[styles.search, focused && styles.inputFocus]}>
     <Feather name="search" size={18} color={focused ? colors.accent : colors.muted}/>
     <TextInput ref={inputRef} testID={testID} accessibilityLabel={placeholder} value={value} onChangeText={onChange} placeholder={placeholder} placeholderTextColor="#8A8D91" autoFocus={autoFocus} autoCorrect={false} autoCapitalize="none" returnKeyType="search" enterKeyHint="search"
-      onSubmitEditing={onSubmit} submitBehavior={onSubmit ? 'submit' : undefined} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+      onSubmitEditing={onSubmit} submitBehavior={onSubmit ? 'submit' : undefined} onFocus={() => {setFocused(true);onFocus?.();}} onBlur={() => setFocused(false)}
       style={[styles.searchInput, Platform.OS === 'web' && ({outlineStyle: 'none'} as object)]}/>
     {!!value && <Pressable accessibilityRole="button" accessibilityLabel="Borrar búsqueda" hitSlop={12} onPress={() => onChange('')}><Feather name="x-circle" size={18} color={colors.muted}/></Pressable>}
   </View>;
@@ -189,9 +189,9 @@ export function Banner({tone = 'red', title, text, detail, onClose, action, onAc
   </View>;
 }
 /** Un solo contenedor de desplazamiento por vista; el pie fijo ocupa su propio espacio y nunca tapa el contenido. */
-export function Page({children, footer, onRefresh, refreshing = false, testID}: {children: React.ReactNode; footer?: React.ReactNode; onRefresh?: () => void; refreshing?: boolean; testID?: string}) {
+export function Page({children, footer, onRefresh, refreshing = false, testID,scrollRef}: {children: React.ReactNode; footer?: React.ReactNode; onRefresh?: () => void; refreshing?: boolean; testID?: string;scrollRef?:Ref<React.ComponentRef<typeof ScrollView>>}) {
   return <KeyboardAvoidingView style={{flex: 1}} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-    <ScrollView testID={testID} style={{flex: 1}} keyboardShouldPersistTaps="handled" keyboardDismissMode="none" contentContainerStyle={styles.page}
+    <ScrollView ref={scrollRef} testID={testID} style={{flex: 1}} keyboardShouldPersistTaps="handled" keyboardDismissMode="none" contentContainerStyle={styles.page}
       refreshControl={onRefresh ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.accent]} tintColor={colors.accent}/> : undefined}>{children}</ScrollView>
     {footer}
   </KeyboardAvoidingView>;

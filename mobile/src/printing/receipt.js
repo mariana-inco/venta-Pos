@@ -1,4 +1,4 @@
-import {WHATSAPP_NUMBER,WHATSAPP_MARKER,WHATSAPP_PATH,clientDebt} from './contact.js';
+import {WHATSAPP_NUMBER,WHATSAPP_MARKER,WHATSAPP_PATH,clientDebt,creditRows} from './contact.js';
 import {saleNumber,businessName} from './number.js';
 // Values come from saved receipts; strip control bytes before ESC/POS output.
 const safe=value=>String(value??'').replace(/[\x00-\x1f\x7f]/g,' ').trim();
@@ -23,8 +23,9 @@ export function ticketLines(record,kind='sale',width=58){
   rule('=');pair('TOTAL',money(record.total_cents));rule('=');
   for(const p of record.payments||[]){pair(p.method==='cash'?'EFECTIVO':p.platform_name||'ELECTRÓNICO',money(p.amount_cents));if(p.reference)add('Ref: '+p.reference);}
   if(s.cash_received_cents!=null){pair('Recibido',money(s.cash_received_cents));pair('Cambio',money(s.cash_change_cents||0));}
-  if(s.credit){center('VENTA A CRÉDITO');if(s.initial_paid_cents>0)pair('Abono inicial',money(s.initial_paid_cents));center((s.initial_balance_cents||0)===0?'PAGADA':s.initial_paid_cents?'PAGO PARCIAL':'PENDIENTE');}
-  if(clientDebt(s)>0){rule();pair('Saldo del cliente',money(clientDebt(s)));}
+  if(s.credit){center('VENTA A CRÉDITO');if(s.initial_paid_cents>0&&!creditRows(s).length)pair('Abono inicial',money(s.initial_paid_cents));center((s.initial_balance_cents||0)===0?'PAGADA':s.initial_paid_cents?'PAGO PARCIAL':'PENDIENTE');}
+  if(creditRows(s).length){rule();for(const [label,value] of creditRows(s))pair(label,money(value));}
+  else if(clientDebt(s)>0){rule();pair('Saldo del cliente',money(clientDebt(s)));}
   rule();add(WHATSAPP_MARKER);center('¡Gracias por su compra!');center('DOK POLLO MC');add('');center('Comprobante de venta.');center('No es factura electrónica.');
  }else{
   add('Abrió: '+s.opener_name);add('Cerró: '+s.admin_name);rule();

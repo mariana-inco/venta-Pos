@@ -30,7 +30,7 @@ test('Ticket: deuda anterior más venta/abono, contado con deuda, cero oculto y 
   await collect('5000');assert.equal(customerBalance(db,customer),500000);
   const partialInput=input('credit',{initial_payment:'2000',initial_method:'cash'});
   const partial=await req('/sales',partialInput,201);assert.equal(partial.snapshot.customer_balance_cents,1300000);
-  const line=ticketLines(partial).join('\n');assert.match(line,/Saldo del cliente/);assert.match(line,/13\.000/);assert.doesNotMatch(line,/Saldo al emitir/);
+  const line=ticketLines(partial).join('\n');assert.match(line,/Total adeudado/);assert.match(line,/13\.000/);assert.doesNotMatch(line,/Saldo al emitir/);
   await collect('13000');assert.equal(customerBalance(db,customer),0);
   const retry=await req('/sales',partialInput,201);assert.equal(retry.snapshot.customer_balance_cents,1300000);
   const paid=await req('/sales',input('cash'),201);assert.equal(paid.snapshot.customer_balance_cents,0);assert.doesNotMatch(ticketLines(paid).join('\n'),/saldo/i);
@@ -39,7 +39,7 @@ test('Ticket: deuda anterior más venta/abono, contado con deuda, cero oculto y 
   const html=ticketHtml(paid);assert.match(html,/<svg[^>]+aria-label="WhatsApp"/);assert.match(html,/3225268837/);assert.doesNotMatch(html,/Solo mensajes|Solo WhatsApp|\[\[WHATSAPP/);
   for(const [sale,hasDebt] of [[paid,false],[cash,true],[partial,true]]){
    const pdf=await receiptPdf(sale,58),text=execFileSync('pdftotext',['-','-'],{input:pdf}).toString();
-   assert.match(text,/3225268837/);assert.equal(/Saldo del cliente/.test(text),hasDebt);assert.doesNotMatch(text,/Solo mensajes|Solo WhatsApp|Saldo al emitir/);
+   assert.match(text,/3225268837/);assert.equal(/Total adeudado/.test(text),hasDebt);assert.doesNotMatch(text,/Solo mensajes|Solo WhatsApp|Saldo al emitir/);
    assert.equal((pdf.toString('latin1').match(/\/Type \/Page\b/g)||[]).length,1);
   }
  }finally{await new Promise(r=>server.close(r));db.close();}

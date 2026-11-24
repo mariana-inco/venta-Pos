@@ -31,6 +31,7 @@ export type Run=(fn:()=>Promise<void>,success?:string)=>void;
 export default function App(){return <SafeAreaProvider><Main/></SafeAreaProvider>;}
 function Main(){
  const {width}=useWindowDimensions();
+ const [viewportHeight,setViewportHeight]=useState<number|undefined>(undefined);useEffect(()=>{if(Platform.OS!=='web')return;const change=()=>setViewportHeight(window.visualViewport?.height);change();window.visualViewport?.addEventListener('resize',change);return ()=>window.visualViewport?.removeEventListener('resize',change);},[]);
  const [user,setUser]=useState<User|null>(null),[boot,setBoot]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState<{text:string;detail?:string}|null>(null),[tab,setTab]=useState<Tab>('home');
  const [products,setProducts]=useState<Product[]>([]),[customers,setCustomers]=useState<Customer[]>([]),[platforms,setPlatforms]=useState<PayPlatform[]>([]),[sessions,setSessions]=useState<CashSession[]>([]),[settings,setSettings]=useState<Settings>({business_name:"Dok Pollo MC",paper_width:80}),[sale,setSale]=useState<Sale|null>(null),[closure,setClosure]=useState<Closure|null>(null),[sessionFilter,setSessionFilter]=useState(''),[historyVersion,setHistoryVersion]=useState(0),[catalogTab,setCatalogTab]=useState<'products'|'customers'>('products'),[catalogVersion,setCatalogVersion]=useState(0),[toast,setToast]=useState('');
  const [route,setRoute]=useState<{id:string;name:string}|null>(null),[flow,setFlow]=useState(false);
@@ -56,13 +57,13 @@ function Main(){
  const logout=()=>run(async()=>{await signOut();setUser(null);setProducts([]);setCustomers([]);setPlatforms([]);setSessions([]);setSale(null);setClosure(null);setSessionFilter('');setTab('home');});
  if(boot)return <SafeAreaView style={local.root}><View style={{flex:1,alignItems:'center',justifyContent:'center',gap:18}}><Logo width={120}/><Text style={styles.h2}>DOK POLLO MC</Text><ActivityIndicator color={colors.accent}/></View></SafeAreaView>;
  const errorBanner=error&&<View style={local.bannerWrap}><Banner text={error.text} detail={error.detail} onClose={()=>setError(null)}/></View>;
- if(!user)return <SafeAreaView style={local.root} edges={['top','left','right','bottom']}><StatusBar style="dark"/><ProgressBar active={busy}/>{errorBanner}
+ if(!user)return <SafeAreaView style={[local.root,viewportHeight?{height:viewportHeight}:undefined]} edges={['top','left','right','bottom']}><StatusBar style="dark"/><ProgressBar active={busy}/>{errorBanner}
   <LoginScreen busy={busy} onSubmit={(username,password)=>run(async()=>{const u=await signIn(username,password);setUser(u);setTab('home');await refresh();})}/></SafeAreaView>;
  const brand='DOK POLLO MC',narrow=width<360,state=sync&&syncSummary(sync);
  const stateColor=state?.tone==='green'?colors.green:state?.tone==='orange'?colors.orange:colors.muted;
  // En el cobro y con el teclado abierto se oculta la navegación: más espacio para el campo activo y la acción de continuar.
  const showNav=!keyboard&&!(flow&&tab==='sale');
- return <SafeAreaView style={local.root} edges={['top','left','right','bottom']}><StatusBar style="dark"/>
+ return <SafeAreaView style={[local.root,viewportHeight?{height:viewportHeight}:undefined]} edges={['top','left','right','bottom']}><StatusBar style="dark"/>
   <View style={local.top}>
    <Pressable accessibilityRole="button" accessibilityLabel={`Ir a inicio${state?`. ${state.text}`:''}`} onPress={()=>go('home')} style={local.brandGroup}>
     <Logo width={32}/>

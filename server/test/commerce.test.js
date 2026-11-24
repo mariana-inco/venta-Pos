@@ -13,7 +13,7 @@ test('Rutas, códigos, inventario compartido, crédito, abonos, reversión y anu
  const request=async(path,body,role='admin',method=body?'POST':'GET',status=200)=>{body=prepareRequest(db,tokens[role],path,body);const r=await fetch(`http://127.0.0.1:${server.address().port}/api${path}`,{method,headers:{Authorization:`Bearer ${tokens[role]}`,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});const result=await r.json();assert.equal(r.status,status,JSON.stringify(result));return result;};
  try{
  const users=await request('/users');const seller=users.find(u=>u.username==='seller'),other=users.find(u=>u.username==='other');
- const r1=await request('/routes',{name:'Ruta 1'}),r2=await request('/routes',{name:'Ruta 2'});
+ const r1=await request('/routes',{name:'Ruta 1'}),r2=await request('/routes',{name:'Ruta 2'});for(const r of [r1,r2])await request('/route-cycles/open',{route_id:r.id,request_key:randomUUID()});
  await request(`/routes/${r1.id}/sellers/${seller.id}`,{},'admin','PUT');await request(`/routes/${r2.id}/sellers/${other.id}`,{},'admin','PUT');
  const agent=await request('/agents',{user_id:seller.id,name:'Vendedor asociado'});
  const customer=await request('/customers',{name:'Manuel',city:'Bogotá'},'seller','POST',201);

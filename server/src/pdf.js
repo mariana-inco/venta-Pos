@@ -1,4 +1,4 @@
-import {WHATSAPP_NUMBER,WHATSAPP_PATH,clientDebt} from './receipt-contact.js';
+import {WHATSAPP_NUMBER,WHATSAPP_PATH,clientDebt,creditRows} from './receipt-contact.js';
 import {publicNumber} from './receipt-numbers.js';
 import PDFDocument from 'pdfkit';
 import { fileURLToPath } from 'node:url';
@@ -95,8 +95,9 @@ export async function receiptPdf(sale,width=58) {
  const count=sale.items.length;
  lines.push({rule:'dash'},{pair:['Subtotal',cop(sale.total_cents)]},{rule:'double'},{pair:['TOTAL',cop(sale.total_cents)],bold:true,size:L.total},{rule:'double'},
   {pair:['Productos',String(count)]});
- if(s.credit){lines.push({pair:['Venta a crédito','']});if(s.initial_paid_cents>0)lines.push({pair:['Abono inicial',cop(s.initial_paid_cents)]});lines.push({text:(s.initial_balance_cents||0)===0?'PAGADA':s.initial_paid_cents?'PAGO PARCIAL':'PENDIENTE',bold:true});}
- if(clientDebt(s)>0)lines.push({space:3},{pair:['Saldo del cliente',cop(clientDebt(s))],bold:true});
+ if(s.credit){lines.push({pair:['Venta a crédito','']});if(s.initial_paid_cents>0&&!creditRows(s).length)lines.push({pair:['Abono inicial',cop(s.initial_paid_cents)]});lines.push({text:(s.initial_balance_cents||0)===0?'PAGADA':s.initial_paid_cents?'PAGO PARCIAL':'PENDIENTE',bold:true});}
+ if(creditRows(s).length){for(const [label,value] of creditRows(s))lines.push({pair:[label,cop(value)],bold:label==='Total adeudado'});}
+ else if(clientDebt(s)>0)lines.push({space:3},{pair:['Saldo del cliente',cop(clientDebt(s))],bold:true});
  if(s.cash_received_cents!==null&&s.cash_received_cents!==undefined)lines.push({pair:['Recibido',cop(s.cash_received_cents)]},{pair:['Cambio',cop(s.cash_change_cents||0)]});
  if(s.credit&&!sale.payments.length)lines.push({pair:['Método de pago','CRÉDITO']});
  for(const p of sale.payments){

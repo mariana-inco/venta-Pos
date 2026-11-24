@@ -1,4 +1,4 @@
-import {WHATSAPP_NUMBER,clientDebt} from './printing/contact';
+import {WHATSAPP_NUMBER,clientDebt,creditRows} from './printing/contact';
 import {FontAwesome} from '@expo/vector-icons';
 import {businessName} from './printing/number';
 import React from 'react';
@@ -52,8 +52,8 @@ export function Receipt({sale, width}: {sale: Sale; width: 58 | 80}) {
     <Pair left="TOTAL" right={cop(sale.total_cents)} bold big/>
     <View style={r.double}/>
     {s.cash_received_cents!=null&&<><Pair left="Recibido" right={cop(s.cash_received_cents)}/><Pair left="Cambio" right={cop(s.cash_change_cents||0)}/></>}
-    {s.credit&&<><T bold>VENTA A CRÉDITO</T>{!!s.initial_paid_cents&&<Pair left="Abono inicial" right={cop(s.initial_paid_cents)}/>}<T bold>{(s.initial_balance_cents||0)===0?'PAGADA':s.initial_paid_cents?'PAGO PARCIAL':'PENDIENTE'}</T></>}
-    {clientDebt(s)>0&&<Pair left="Saldo del cliente" right={cop(clientDebt(s))} bold/>}
+    {s.credit&&<><T bold>VENTA A CRÉDITO</T>{!!s.initial_paid_cents&&!creditRows(s).length&&<Pair left="Abono inicial" right={cop(s.initial_paid_cents)}/>}<T bold>{(s.initial_balance_cents||0)===0?'PAGADA':s.initial_paid_cents?'PAGO PARCIAL':'PENDIENTE'}</T></>}
+    {creditRows(s).length?creditRows(s).map(([label,value]:any)=><Pair key={label} left={label} right={cop(value)} bold={label==='Total adeudado'}/>):clientDebt(s)>0&&<Pair left="Saldo del cliente" right={cop(clientDebt(s))} bold/>}
     {sale.state==='ANULADA'&&<T bold>ANULADA · Original conservado</T>}
     <Pair left="Productos" right={String(sale.items?.length || 0)}/>
     {sale.payments?.map((p, i) => <View key={i}>

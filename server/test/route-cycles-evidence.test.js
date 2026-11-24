@@ -1,0 +1,74 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import {writeFileSync,mkdirSync,mkdtempSync,rmSync,readFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {DatabaseSync} from 'node:sqlite';
+import sharp from 'sharp';
+import {openDatabase} from '../src/db.js';
+import {createApp} from '../src/app.js';
+import {createUser,login} from '../src/auth.js';
+import {receiptPdf} from '../src/pdf.js';
+import {ticketLines} from '../../mobile/src/printing/receipt.js';
+async function fixture(){
+ const db=openDatabase(':memory:'),users={},tokens={};for(const name of ['admin','seller','other']){users[name]=await createUser(db,{username:name,name,role:name==='admin'?'admin':'seller',password:'testing-password-12345'});tokens[name]=(await login(db,name,'testing-password-12345')).token;}
+ const server=createApp(db).listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));const base=`http://127.0.0.1:${server.address().port}/api`;
+ const request=async(path,body,role='admin',status=200,method=body?'POST':'GET')=>{const r=await fetch(base+path,{method,headers:{Authorization:'Bearer '+tokens[role],'Content-Type':'application/json'},body:body&&JSON.stringify(body)});const value=await r.json();assert.equal(r.status,status,JSON.stringify(value));return value;};
+ const routes=[];for(const name of ['EL ROSAL','PACHO'])routes.push(await request('/routes',{name}));
+ for(const [name,route] of [['seller',routes[0]],['other',routes[1]]])await request('/users/'+users[name].id,{...users[name],route_id:route.id},'admin',200,'PUT');
+ const agent=await request('/agents',{user_id:users.seller.id,name:'Ana'}),products=[];for(const name of ['A','B','C'])products.push(await request('/products',{name,price:'1000',wholesale_price:'800',unit:'unit',code:name}));
+ const customer=await request('/customers',{name:'Cliente',city:'Bogotá',route_id:routes[0].id},'admin',201);
+ const session=await request('/cash-sessions',{opening:'100000'},'seller',201);
+ const open=(route=routes[0])=>request('/route-cycles/open',{route_id:route.id,request_key:randomUUID()});
+ const delivery=(items,route=routes[0],extra={})=>request('/deliveries',{route_id:route.id,items,note:'Entrega',request_key:randomUUID(),...extra});
+ const sale=async(qty,extra={},client=customer)=>{const key=randomUUID();await request('/sale-drafts',{customer_id:client.id,agent_id:agent.id,request_key:key},'seller');const body={draft_id:key,request_key:key,agent_id:agent.id,customer_id:client.id,session_id:session.id,items:[{product_id:products[0].id,quantity:String(qty)}],method:'cash',...extra};return {body,value:await request('/sales',body,'seller',201)};};
+ return {db,users,tokens,base,request,routes,agent,products,customer,session,open,delivery,sale,close:async()=>{await new Promise(r=>server.close(r));db.close();}};
+}
+test('Aperturas independientes, entregas adicionales por producto, ajustes, resumen, atomicidad, nuevos ciclos e históricos',async()=>{
+ const f=await fixture();try{
+ const [a,b,c]=f.products,[r1,r2]=f.routes;
+ await f.request('/deliveries',{route_id:r1.id,items:[{product_id:a.id,quantity:'20'}],request_key:randomUUID()},'admin',409);
+ const key=randomUUID(),race=await Promise.all([0,1].map(()=>fetch(f.base+'/route-cycles/open',{method:'POST',headers:{Authorization:'Bearer '+f.tokens.admin,'Content-Type':'application/json'},body:JSON.stringify({route_id:r1.id,request_key:key})})));assert.deepEqual(race.map(r=>r.status),[200,200]);const o=await race[0].json();await f.open(r2);await f.request('/route-cycles/open',{route_id:r1.id,request_key:randomUUID()},'admin',409);await f.request('/route-cycles/open',{route_id:r2.id,request_key:randomUUID()},'seller',403);
+ const first={route_id:r1.id,opening_id:o.id,items:[{product_id:a.id,quantity:'20'},{product_id:b.id,quantity:'30'}],request_key:randomUUID(),note:'Inicial'};await f.request('/deliveries',first);await f.request('/deliveries',first);
+ const concurrent=await Promise.all([0,1].map(()=>fetch(f.base+'/deliveries',{method:'POST',headers:{Authorization:'Bearer '+f.tokens.admin,'Content-Type':'application/json'},body:JSON.stringify({route_id:r1.id,opening_id:o.id,items:[{product_id:c.id,quantity:'15'}],request_key:randomUUID(),note:'Adicional'})})));assert.deepEqual(concurrent.map(r=>r.status).sort(),[200,409]);await f.request('/deliveries',{...first,request_key:randomUUID()},'admin',409);
+ let summary=await f.request('/route-cycles/'+r1.id+'/summary');assert.deepEqual(new Set(summary.delivered_products),new Set(f.products.map(p=>p.id)));assert.equal(summary.summary.groups.reduce((n,g)=>n+g.delivered_milli,0),65000);
+ const group=f.db.prepare('SELECT group_id FROM product_groups WHERE product_id=?').get(a.id).group_id;
+ await f.request('/inventory',{route_id:r1.id,group_id:group,quantity:'25',kind:'adjust',expected_available_milli:20000,note:'Más carga confirmada'});await f.sale(20);
+ summary=await f.request('/route-cycles/'+r1.id+'/summary');assert.equal(summary.summary.totals[1].delivered_milli,70000);assert.equal(summary.summary.totals[1].sold_milli,20000);assert.equal(summary.summary.totals[1].remaining_milli,50000);
+ await f.request('/route/close',{route_id:r2.id},'seller',403);
+ f.db.exec("CREATE TRIGGER simulate_cycle_close BEFORE UPDATE ON route_stock WHEN NEW.available_milli=0 BEGIN SELECT RAISE(ABORT,'injected'); END");await f.request('/route/close',{route_id:r1.id,opening_id:o.id},'admin',500);assert.equal(f.db.prepare('SELECT COUNT(*) n FROM route_cycle_closures').get().n,0);f.db.exec('DROP TRIGGER simulate_cycle_close');
+ await f.request('/route/close',{route_id:r1.id,opening_id:o.id,review_key:'a'.repeat(64)},'admin',409);
+ const closed=await f.request('/route/close',{route_id:r1.id,opening_id:o.id});assert.equal(closed.snapshot.inventory.totals[1].delivered_milli,70000);assert.equal(closed.snapshot.inventory.totals[1].remaining_milli,50000);assert.equal(f.db.prepare('SELECT SUM(available_milli) n FROM route_stock WHERE route_id=?').get(r1.id).n,0);
+ const frozen=JSON.stringify(closed.snapshot);await f.request('/route/close',{route_id:r1.id,opening_id:o.id},'admin',409);await f.request('/inventory',{route_id:r1.id,group_id:group,quantity:'1',kind:'adjust',expected_available_milli:0,note:'Cerrada'},'admin',409);
+ const next=await f.open();assert.notEqual(next.id,o.id);await f.request('/route/close',{route_id:r1.id,opening_id:o.id},'admin',409);await f.delivery([{product_id:a.id,quantity:'2'}]);const second=await f.request('/route-cycles/'+r1.id+'/summary');assert.equal(second.summary.groups.find(g=>g.group_id===group).delivered_milli,2000);assert.equal(second.summary.sale_count,0);
+ assert.equal(JSON.stringify((await f.request('/route-cycle-closures?route_id='+r1.id)).closures[0].snapshot),frozen);assert.ok((await f.request('/route-cycles')).find(r=>r.id===r2.id).opening);
+ await f.request('/inventory-groups/'+group,undefined,'seller',403,'DELETE');await f.request('/inventory-groups/'+group,undefined,'admin',409,'DELETE');await f.request('/route/close',{route_id:r1.id,opening_id:next.id});await f.request('/inventory-groups/'+group,undefined,'admin',200,'DELETE');assert.equal((await f.request('/inventory-groups')).some(g=>g.id===group),false);assert.ok(f.db.prepare('SELECT 1 FROM products WHERE id=?').get(a.id));assert.equal(f.db.prepare('SELECT group_id FROM product_groups WHERE product_id=?').get(a.id),undefined);assert.equal(JSON.stringify((await f.request('/route-cycle-closures?route_id='+r1.id)).closures.find(x=>x.id===closed.id).snapshot),frozen);assert.deepEqual(f.db.prepare('PRAGMA foreign_key_check').all(),[]);
+ }finally{await f.close();}
+});
+test('Crédito anterior, compra actual, abono simultáneo, referencias y snapshots inmutables',async()=>{
+ const f=await fixture();try{
+ await f.open();await f.delivery([{product_id:f.products[0].id,quantity:'1000'}]);const cases=[{method:'cash',paid:2000000,newDebt:0,total:5000000},{method:'credit',paid:0,newDebt:2000000,total:7000000},{method:'credit',initial_payment:'10000',initial_method:'cash',paid:1000000,newDebt:1000000,total:6000000}];mkdirSync('output/pdf',{recursive:true});
+ for(let i=0;i<cases.length;i++){const c=await f.request('/customers',{name:'Caso '+i,city:'Bogotá',route_id:f.routes[0].id},'admin',201);await f.sale(50,{method:'credit'},c);const extra={method:cases[i].method};if(cases[i].initial_payment){extra.initial_payment=cases[i].initial_payment;extra.initial_method='cash';}const {value,body}=await f.sale(20,extra,c),s=value.snapshot;assert.equal(s.prior_credit_cents,5000000);assert.equal(s.current_paid_cents,cases[i].paid);assert.equal(s.new_credit_cents,cases[i].newDebt);assert.equal(s.customer_balance_cents,cases[i].total);assert.match(ticketLines(value).join('\n'),/Crédito anterior/);assert.match(ticketLines(value).join('\n'),/Total adeudado/);writeFileSync('output/pdf/credito-desglose-caso-'+(i+1)+'-58mm.pdf',await receiptPdf(value,58));assert.equal((await f.request('/sales',body,'seller',201)).id,value.id);const snap=JSON.stringify(s);await f.request('/collections',{customer_id:c.id,session_id:f.session.id,amount:'1000',method:'cash',request_key:randomUUID()},'seller');assert.equal(JSON.stringify((await f.request('/sales/'+value.id,undefined,'admin')).snapshot),snap);}
+ const c=await f.request('/customers',{name:'Abono anterior',city:'Bogotá',route_id:f.routes[0].id},'admin',201);await f.sale(50,{method:'credit'},c);const {value,body}=await f.sale(20,{method:'credit',initial_payment:'10000',initial_method:'cash',prior_debt_payment:{amount:'10000',method:'cash'}},c);assert.equal(value.snapshot.prior_credit_payment_cents,1000000);assert.equal(value.snapshot.customer_balance_cents,5000000);const before=f.db.prepare('SELECT COUNT(*) n FROM collections').get().n;await f.request('/sales',body,'seller',201);assert.equal(f.db.prepare('SELECT COUNT(*) n FROM collections').get().n,before);
+ const badKey=randomUUID();await f.request('/sale-drafts',{customer_id:c.id,agent_id:f.agent.id,request_key:badKey},'seller');const count=f.db.prepare('SELECT COUNT(*) n FROM collections').get().n;await f.request('/sales',{...body,draft_id:badKey,request_key:badKey,method:'electronic',credit:false,initial_payment:undefined,platform_id:'nequi',reference:'SAME',prior_debt_payment:{amount:'1000',method:'electronic',platform_id:'nequi',reference:' SAME '}},'seller',409);assert.equal(f.db.prepare('SELECT COUNT(*) n FROM collections').get().n,count);
+ }finally{await f.close();}
+});
+test('Evidencias de gastos: autorización, formatos, carga idempotente, miniaturas, fechas y paginación sin imágenes en listado',async()=>{
+ const f=await fixture();try{
+ const image=await sharp({create:{width:500,height:800,channels:3,background:'white'}}).jpeg().toBuffer(),key=randomUUID(),path='/expenses/evidence?session_id='+f.session.id+'&request_key='+key;
+ async function upload(body=image,role='seller',url=path,type='image/jpeg',expected=200){const r=await fetch(f.base+url,{method:'POST',headers:{Authorization:'Bearer '+f.tokens[role],'Content-Type':type},body});const value=await r.json();assert.equal(r.status,expected,JSON.stringify(value));return value;}
+ const evidence=await upload();assert.equal((await upload()).id,evidence.id);await upload(Buffer.from('not a picture'),'seller','/expenses/evidence?session_id='+f.session.id+'&request_key='+randomUUID(),'image/jpeg',400);await upload(image,'other',path,'image/jpeg',403);await upload(Buffer.alloc(5*1024*1024+1),'seller',path,'image/jpeg',413);
+ const expense={session_id:f.session.id,description:'Transporte',amount:'100',evidence_id:evidence.id,request_key:randomUUID()};const e=await f.request('/expenses',expense,'seller',201);assert.equal((await f.request('/expenses',expense,'seller',201)).id,e.id);await f.request('/expenses',{...expense,request_key:randomUUID()},'seller',409);
+ for(const size of ['thumbnail','image']){let r=await fetch(f.base+'/expenses/evidence/'+evidence.id+'/'+size,{headers:{Authorization:'Bearer '+f.tokens.admin}});assert.equal(r.status,200);assert.equal(r.headers.get('content-type'),'image/jpeg');const meta=await sharp(Buffer.from(await r.arrayBuffer())).metadata();assert.ok(meta.width<=(size==='thumbnail'?320:1600));r=await fetch(f.base+'/expenses/evidence/'+evidence.id+'/'+size,{headers:{Authorization:'Bearer '+f.tokens.other}});assert.equal(r.status,403);}
+ for(let i=0;i<33;i++)await f.request('/expenses',{session_id:f.session.id,description:'Histórico '+i,amount:'1',request_key:randomUUID()},'seller',201);
+ const oldDate=new Date(Date.now()-172800000).toISOString(),oldDay=new Date(Date.parse(oldDate)-18000000).toISOString().slice(0,10);f.db.prepare('INSERT INTO cash_expenses VALUES(?,?,?,?,?,?,?,?,?)').run(randomUUID(),f.session.id,f.users.seller.id,f.routes[0].id,'Gasto anterior',100,oldDate,randomUUID(),'history');assert.equal((await f.request('/expenses?from='+oldDay+'&to='+oldDay)).count,1);
+ const list=await f.request('/expenses');assert.equal(list.count,34);assert.equal(list.expenses.length,30);assert.equal((await f.request('/expenses?page=2')).expenses.length,4);assert.ok(list.expenses.every(e=>!('image' in e)&&!('content' in e)&&!('base64' in e)));assert.equal((await f.request('/expenses',undefined,'other')).count,0);
+ assert.deepEqual(f.db.prepare('PRAGMA foreign_key_check').all(),[]);
+ }finally{await f.close();}
+});
+test('Migración de ciclos conserva datos previos, entrega cero disponible y saldo de transición sin inventar movimientos',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'cycle-migration-')),path=join(dir,'db.sqlite');let d=openDatabase(path);try{
+ const u=await createUser(d,{username:'migration',name:'Migration',role:'admin',password:'migration-password-123'}),r=randomUUID(),g=randomUUID();d.prepare('INSERT INTO routes VALUES(?,?,1)').run(r,'Ruta existente');d.prepare('INSERT INTO inventory_groups VALUES(?,?,?)').run(g,'Grupo previo','kg');d.prepare('INSERT INTO route_stock VALUES(?,?,?,?)').run(r,g,10000,7000);d.exec('DELETE FROM route_cycle_migration');const before=JSON.stringify(d.prepare('SELECT * FROM route_stock').all());d.close();d=openDatabase(path);assert.equal(JSON.stringify(d.prepare('SELECT * FROM route_stock').all()),before);const o=d.prepare('SELECT * FROM route_openings').get();assert.equal(o.transition,1);assert.equal(JSON.parse(o.baseline)[0].available_milli,7000);assert.equal(d.prepare('SELECT COUNT(*) n FROM stock_movements').get().n,0);d.close();d=openDatabase(path);assert.equal(d.prepare('SELECT COUNT(*) n FROM route_openings').get().n,1);assert.throws(()=>d.prepare('DELETE FROM route_openings').run(),/inmutable/);
+ }finally{d.close();rmSync(dir,{recursive:true,force:true});}
+});

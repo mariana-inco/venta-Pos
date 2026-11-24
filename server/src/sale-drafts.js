@@ -1,3 +1,4 @@
+import {currentOpening} from './route-cycles.js';
 import {id,now,transaction} from './db.js';
 import {digest} from './auth.js';
 import {fail} from './service.js';
@@ -19,5 +20,6 @@ export function lockedSale(db,user,input,route){
  const draft=db.prepare('SELECT * FROM sale_drafts WHERE id=? AND user_id=?').get(input.draft_id||'',user.id);
  if(!draft)fail(400,'Inicia la venta seleccionando primero vendedor y cliente.');
  if(input.request_key!==draft.id||draft.customer_id!==input.customer_id||draft.agent_id!==input.agent_id||draft.route_id!==route.id)fail(409,'No se puede cambiar el cliente, vendedor o ruta de una venta iniciada.');
+ const link=db.prepare("SELECT opening_id FROM route_operation_links WHERE kind='draft' AND event_id=?").get(draft.id);if(link&&link.opening_id!==currentOpening(db,route.id)?.id)fail(409,'La apertura de esta venta ya está cerrada. Inicia otra venta.');
  return {...draft,prices:JSON.parse(draft.prices)};
 }

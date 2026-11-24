@@ -19,7 +19,7 @@ export function MenuScreen({user, route, go, onCatalog}: Props) {
     ]},
     {title: admin ? 'Rutas e inventario' : route ? `Mi ruta · ${route.name}` : 'Mi ruta', items: [
       {id: 'inventory', icon: 'archive', title: admin ? 'Inventarios y entregas' : 'Inventario de mi ruta', subtitle: admin ? 'Entrega diaria, existencias, ajustes y grupos' : 'Existencias disponibles y entregas recibidas', onPress: () => go('inventory')},
-      {id: 'routeclose', icon: 'check-square', title: 'Cierre de ruta', subtitle: admin ? 'Cerrar la jornada y consultar cierres anteriores' : 'Cerrar la jornada al terminar el recorrido', onPress: () => go('routeclose')},
+      {id: 'routeclose', icon: 'check-square', title: 'Apertura y cierre de rutas', subtitle: admin ? 'Abrir rutas, revisar consolidado y consultar cierres' : 'Cerrar la jornada al terminar el recorrido', onPress: () => go('routeclose')},
       {id: 'routes', icon: 'map', title: 'Rutas', subtitle: admin ? 'Crear, renombrar y ver usuarios asignados' : 'Consultar tu ruta asignada', onPress: () => go('routes')},
     ]},
     {title: 'Catálogo', items: [

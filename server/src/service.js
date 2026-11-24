@@ -4,7 +4,7 @@ import {lockedSale} from './sale-drafts.js';
 import {salePayments,saveReference,paymentsFor} from './payments.js';
 import {typeFor,priced,agentsFor,requireOpenRoute,results,inventoryReport,dayOf} from './business.js';
 import {claimReceipt} from './receipt-numbers.js';
-import {routeFor,consumeRoute,balance,customerBalance} from './commerce.js';
+import {routeFor,consumeRoute,balance,customerBalance,createCollection} from './commerce.js';
 import { id, now, audit, transaction } from './db.js';
 import { money, quantity, subtotal } from './money.js';
 import { digest } from './auth.js';
@@ -67,14 +67,16 @@ export function recordSale(db,user,input,offline=null) {
   const total=items.reduce((sum,i)=>sum+i.subtotal_cents,0);
   if(!Number.isSafeInteger(total)||total>100_000_000_000) fail(400,'El total supera el límite permitido.');
   const {credit,paid,lines:paymentLines}=salePayments(db,input,total);
-  const received=input.cash_received===undefined?null:money(input.cash_received);
-  if(received!==null&&(credit||input.method!=='cash'||received<total))fail(400,'El efectivo recibido debe cubrir la venta de contado.');
+  const received=input.cash_received===undefined?null:money(input.cash_received),priorCash=input.prior_debt_payment?.method==='cash'?money(input.prior_debt_payment.amount):0;
+  if(received!==null&&(credit||input.method!=='cash'||received<total+priorCash))fail(400,'El efectivo recibido debe cubrir la venta de contado.');
   const saleId=offline?.id||id(); const created=offline?.createdAt||now();
   const number=db.prepare('SELECT COALESCE(MAX(number),0)+1 AS n FROM sales').get().n;
   const settings=offline?.catalog.settings||db.prepare('SELECT * FROM settings WHERE id=1').get();
   // Los datos del negocio quedan congelados en la venta: el comprobante histórico no cambia si se editan después.
+  const priorDebt=customerBalance(db,customer.id);let priorPayment=0;
+  if(input.prior_debt_payment){if(offline)fail(409,'Los abonos a deuda anterior requieren conexión.');priorPayment=money(input.prior_debt_payment.amount);if(priorPayment<=0||priorPayment>priorDebt)fail(400,'El abono supera el crédito anterior o no es válido.');createCollection(db,user,{...input.prior_debt_payment,customer_id:customer.id,session_id:session.id,note:'Abono a crédito anterior en venta '+input.request_key,request_key:input.request_key});}
   const customerDebt=customerBalance(db,customer.id)+total-paid;
-  const snapshot={business_whatsapp:WHATSAPP_NUMBER,customer_balance_cents:customerDebt,receipt_number:claimReceipt(db,saleId,offline?.deviceId||null,offline?.receiptSequence??null),business_name:settings.business_name,business_nit:settings.business_nit,business_address:settings.business_address,business_phone:settings.business_phone,business_city:settings.business_city,customer_name:offline?.customer.name||customer.name,customer_city:offline?.customer.city||customer.city,seller_name:offline?.agent.name||agent.name,user_name:user.name,agent_id:agent.id,customer_type:customerType,price_type:customerType,route_name:route?.name||null,route_id:route?.id||null,credit:!!credit,initial_paid_cents:paid,initial_balance_cents:total-paid,cash_received_cents:received,cash_change_cents:received===null?null:received-total};
+  const snapshot={credit_breakdown_version:1,prior_credit_cents:priorDebt,prior_credit_payment_cents:priorPayment,current_purchase_cents:total,current_paid_cents:paid,new_credit_cents:total-paid,business_whatsapp:WHATSAPP_NUMBER,customer_balance_cents:customerDebt,receipt_number:claimReceipt(db,saleId,offline?.deviceId||null,offline?.receiptSequence??null),business_name:settings.business_name,business_nit:settings.business_nit,business_address:settings.business_address,business_phone:settings.business_phone,business_city:settings.business_city,customer_name:offline?.customer.name||customer.name,customer_city:offline?.customer.city||customer.city,seller_name:offline?.agent.name||agent.name,user_name:user.name,agent_id:agent.id,customer_type:customerType,price_type:customerType,route_name:route?.name||null,route_id:route?.id||null,credit:!!credit,initial_paid_cents:paid,initial_balance_cents:total-paid,cash_received_cents:received,cash_change_cents:received===null?null:received-total-priorCash};
   db.prepare('INSERT INTO sales VALUES (?,?,?,?,?,?,?,?,?,?)').run(saleId,number,session.id,user.id,customer.id,created,total,JSON.stringify(snapshot),input.request_key,requestHash);
   db.prepare('INSERT INTO sale_terms VALUES (?,?,?,?)').run(saleId,route?.id||null,Number(!!credit),paid);
   db.prepare('INSERT INTO sale_agents VALUES (?,?)').run(saleId,agent.id);

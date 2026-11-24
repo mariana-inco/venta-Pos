@@ -1,3 +1,4 @@
+import {currentOpening} from './route-cycles.js';
 import {id,now,transaction,audit} from './db.js';
 import {fail,sessionFor,recordSale,totals} from './service.js';
 import {routeFor,customerBalance} from './commerce.js';
@@ -15,7 +16,7 @@ export function prepareOfflineRoute(db,user,deviceId,sessionId,catalogFactory){r
  if(db.prepare("SELECT 1 FROM offline_route_reservations WHERE device_id=? AND state<>'released'").get(deviceId))fail(409,'La terminal ya tiene una ruta reservada.');
  const catalog=catalogFactory(),key=id();
  catalog.customers=catalog.customers.filter(c=>c.route_id===route.id||c.routes?.some(r=>r.id===route.id)).map(c=>({...c,balance_cents:customerBalance(db,c.id)}));
- const payload={...catalog,sales_policy:'route-offline-v1',agents:agentsFor(db,user),session:{...session,...totals(db,session.id)},reservation_id:key,reservation_day:dayOf(now()),reservation_sequence:catalog.ack_sequence,receipt_ranges:reserveReceipts(db,deviceId)};
+ const payload={...catalog,sales_policy:'route-offline-v1',agents:agentsFor(db,user),session:{...session,...totals(db,session.id)},opening_id:currentOpening(db,route.id)?.id,reservation_id:key,reservation_day:dayOf(now()),reservation_sequence:catalog.ack_sequence,receipt_ranges:reserveReceipts(db,deviceId)};
  payload.version=digest(JSON.stringify(payload));
  db.prepare('INSERT INTO offline_route_reservations VALUES (?,?,?,?,?,?,?,?,?,?)').run(key,deviceId,user.id,route.id,session.id,payload.reservation_day,now(),null,JSON.stringify(payload),'active');
  audit(db,user.id,'route.offline.prepare',key,{route_id:route.id,device_id:deviceId,session_id:session.id});return activeReservation(db,user,deviceId);
@@ -30,6 +31,7 @@ export function ingestRouteSale(db,user,deviceId,event){
  const d=event.data,r=activeReservation(db,user,deviceId);
  if(!r||r.id!==d.reservation_id)fail(409,'La reserva de esta venta no está activa. La venta queda conservada para revisión.');
  const c=JSON.parse(r.payload),input=d.input;
+ if(c.opening_id&&currentOpening(db,r.route_id)?.id!==c.opening_id)fail(409,'La apertura de la reserva no está activa.');
  if(c.version!==d.catalog_version||dayOf(event.created_at)!==r.day||Date.parse(event.created_at)<Date.parse(r.created_at)-300000||Date.parse(event.created_at)>Date.now()+300000)fail(409,'La fecha o catálogo de la venta no corresponde a su reserva.');
  if(input.session_id!==r.session_id||routeFor(db,user)?.id!==r.route_id||input.request_key!==event.id||input.draft_id!==event.id)fail(403,'La venta no corresponde a esta caja, ruta o terminal.');
  if(!['cash','credit'].includes(input.method)||(input.initial_payment&&Number(input.initial_payment)>0&&input.initial_method!=='cash')||input.payments?.length)fail(400,'Los pagos electrónicos requieren conexión para verificar sus referencias.');

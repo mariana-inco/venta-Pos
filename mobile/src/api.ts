@@ -75,3 +75,18 @@ export async function downloadPdf(path:string,name='estado-de-cuenta.pdf'){
  const result=await FileSystem.downloadAsync(url,FileSystem.cacheDirectory+name,{headers:{Authorization:`Bearer ${token}`}});if(result.status!==200)throw new Error('No se pudo descargar el estado de cuenta. Revisa las fechas y la conexión.');
  await Sharing.shareAsync(result.uri,{mimeType:'application/pdf',dialogTitle:'Estado de cuenta'});
 }
+
+export async function uploadExpenseEvidence(uri:string,sessionId:string,requestKey:string,onProgress:(value:number)=>void):Promise<string>{
+ const url=API_URL+'/api/expenses/evidence?'+new URLSearchParams({session_id:sessionId,request_key:requestKey});
+ if(Platform.OS!=='web'){
+  const task=FileSystem.createUploadTask(url,uri,{httpMethod:'POST',uploadType:FileSystem.FileSystemUploadType.BINARY_CONTENT,headers:{Authorization:`Bearer ${token}`,'Content-Type':'image/jpeg'}},p=>onProgress(p.totalBytesExpectedToSend?Math.round(p.totalBytesSent*100/p.totalBytesExpectedToSend):0));
+  const result=await task.uploadAsync();if(!result)throw new Error('Carga cancelada; puedes reintentar.');const value=JSON.parse(result.body);if(result.status!==200)throw new ApiError(value.error||'No se pudo cargar la evidencia.',result.status);onProgress(100);return value.id;
+ }
+ const blob=await(await fetch(uri)).blob();
+ return new Promise((resolve,reject)=>{const xhr=new XMLHttpRequest();xhr.open('POST',url);xhr.setRequestHeader('Authorization','Bearer '+token);xhr.setRequestHeader('Content-Type',blob.type||'image/jpeg');xhr.upload.onprogress=p=>{if(p.lengthComputable)onProgress(Math.round(p.loaded*100/p.total));};xhr.onerror=()=>reject(new Error('Se perdió la conexión. Reintenta la carga.'));xhr.onload=()=>{const value=JSON.parse(xhr.responseText);if(xhr.status!==200)return reject(new ApiError(value.error||'No se pudo cargar la evidencia.',xhr.status));resolve(value.id);};xhr.send(blob);});
+}
+export async function evidenceImage(id:string,size:'thumbnail'|'image'):Promise<string>{
+ const url=API_URL+'/api/expenses/evidence/'+encodeURIComponent(id)+'/'+size;
+ if(Platform.OS!=='web'){const uri=FileSystem.cacheDirectory+'evidence-'+id+'-'+size+'.jpg';const r=await FileSystem.downloadAsync(url,uri,{headers:{Authorization:'Bearer '+token}});if(r.status!==200)throw new ApiError('No se pudo consultar la evidencia.',r.status);return r.uri;}
+ const r=await fetch(url,{headers:{Authorization:'Bearer '+token}});if(!r.ok)throw new ApiError('No se pudo consultar la evidencia.',r.status);return URL.createObjectURL(await r.blob());
+}
