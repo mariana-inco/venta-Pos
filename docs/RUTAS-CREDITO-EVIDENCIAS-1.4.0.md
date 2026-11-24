@@ -81,4 +81,13 @@ Pendiente físico: no hay Neotek conectado por ADB; falta comprobar en el equipo
 
 Referencias de integración: [Expo ImagePicker](https://docs.expo.dev/versions/latest/sdk/imagepicker/), [Sharp: límites de imagen](https://sharp.pixelplumbing.com/api-constructor/).
 
-APK: `output/dok-pollo-mc-1.4.0-neotek.apk`. SHA256: `a0f85ae550aee1ddd1da44304db135e5f26119bac9de0754a78d056279ed34c8`. Certificado SHA256: `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`.
+APK: `output/dok-pollo-mc-1.4.0-neotek.apk`. SHA256: `aa71375c0f79ac7af5e4fa3cac7f0b35fde8ea0b1dce31aaf997ca651d965b20`. Certificado SHA256: `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`.
+
+
+## Despliegue y comprobación de producción
+
+Coolify `1tosrboab2q12gpea9s2d30t`, código de servidor `937aee210a020ce422fcb3cfa7ab95f467c64b62`, completado 23/11/2026 a las 22:53:22 Colombia. Contenedor `0sxtn0nojcnijnl1dxn7rmev-20261124T035240`, saludable; `/health` 200. Endpoints autenticados de rutas/cierres/gastos devolvieron 200. Procesamiento JPEG Sharp comprobado en el servidor sin almacenar una foto ni crear gastos reales.
+
+Comprobación posterior de solo lectura: 12 ventas, 30 clientes, 16 productos, 2 cajas y 1 cierre de ruta; ningún identificador de esos registros del respaldo ausente. Stock exactamente igual al respaldo. P-15 conserva fecha 21/11/2026 y caja 2; P-10 sigue ausente. Integridad ok, sin errores FK. Generación de datos conservada; no se fuerza limpieza de dispositivos. La sesión temporal de comprobación se retiró al terminar.
+
+El APK final incluye además la lectura compatible de totales de cierres antiguos que los guardaban dentro de `financial`, sin modificar sus snapshots.
