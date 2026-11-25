@@ -41,7 +41,7 @@ export async function documentAction(path:string,width:58|80,action:'share'|'pri
  if(action==='print')action='share';
  if(offlineEnabled&&path.startsWith('/sales/')){const local=await cachedPrintRecord(path);if(local&&(local.sync_status==='pending'||local.reservation_id)){await localDocument(path,width,action);return;}}
  // Account statements and new route documents are rendered by the server.
- const url=`${API_URL}/api${path}/pdf?width=${width}`;const name=`comprobante-${path.split('/').pop()?.slice(0,8)}-${width}mm.pdf`;
+ const url=`${API_URL}/api${path}/pdf?width=${width}`;const name=`comprobante-${new Date().toISOString().slice(0,10)}-${width}mm.pdf`;
  if(Platform.OS==='web'){
   const response=await fetch(url,{headers:{Authorization:`Bearer ${token}`}});if(!response.ok)throw new ApiError('No se pudo descargar el comprobante. Inténtalo nuevamente.',response.status,`HTTP ${response.status} · GET ${path}/pdf`);
   const blob=await response.blob();

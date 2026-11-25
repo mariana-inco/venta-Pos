@@ -7,7 +7,7 @@ const mm=72/25.4;
 // Logo suministrado por el negocio, proporción cuadrada.
 const LOGO=fileURLToPath(new URL('../assets/dok-pollo-mc.png',import.meta.url));const LOGO_RATIO=1;
 // Papel físico → área imprimible habitual (58 → 48 mm, 80 → 72 mm). El contenido nunca sale de esa franja.
-const LAYOUT={58:{side:5*mm,body:8,small:7,title:10,total:13,logo:26*mm},80:{side:4*mm,body:9,small:7.5,title:11,total:15,logo:32*mm}};
+const LAYOUT={58:{side:5*mm,body:8,small:7,title:10,total:13,logo:44*mm},80:{side:4*mm,body:9,small:7.5,title:11,total:15,logo:58*mm}};
 const TOP=4*mm,BOTTOM=8*mm,GAP=6;
 // Las fuentes estándar de PDF usan WinAnsi: los espacios finos de Intl se convierten en espacios normales.
 const clean=text=>String(text??'').replace(/[   ]/g,' ');
@@ -72,8 +72,8 @@ async function build(lines,widthMm,title) {
  doc.end();return done;
 }
 // Encabezado común: logo, nombre y solo los datos del negocio que estén configurados (nunca se inventan).
-function businessHeader(s,L) {
- const lines=[{logo:true},{space:2},{text:shortBrand(s.business_name),bold:true,size:L.title,align:'center'}];
+function businessHeader(s,L,receipt=false) {
+ const lines=[{logo:true},{space:2},...(!receipt?[{text:shortBrand(s.business_name),bold:true,size:L.title,align:'center'}]:[])];
  if(s.business_nit)lines.push({text:`NIT ${s.business_nit}`,align:'center',size:L.small});
  const place=[s.business_address,s.business_city].filter(Boolean).join(' · ');
  if(place)lines.push({text:place,align:'center',size:L.small});
@@ -82,10 +82,10 @@ function businessHeader(s,L) {
 }
 export async function receiptPdf(sale,width=58) {
  const L=LAYOUT[width]||LAYOUT[80];const s=sale.snapshot;
- const lines=[...businessHeader(s,L),{space:4},{rule:'solid'},
+ const lines=[...businessHeader(s,L,true),{space:4},{rule:'solid'},
   {text:'COMPROBANTE DE VENTA',bold:true,align:'center',size:L.small+0.5},{text:`Venta ${saleNumber(sale)}`,bold:true,size:L.total,align:'center'},{rule:'solid'},
   {pair:['Fecha',dateOf(sale.created_at)],boldRight:true},{pair:['Hora',timeOf(sale.created_at)],boldRight:true},{pair:['Vendedor',s.seller_name],boldRight:true}];
- if(s.route_name)lines.push({pair:['Ruta',s.route_name]});
+
  if(sale.session_number)lines.push({pair:['Caja',`#${sale.session_number}`],boldRight:true});
  lines.push({space:3},{pair:['Cliente',s.customer_name],boldRight:true},{pair:['Ciudad',s.customer_city],boldRight:true},{rule:'dash'},{pair:['PRODUCTO','VALOR'],bold:true,size:L.small},{rule:'dash'});
  for(const item of sale.items){
@@ -105,13 +105,13 @@ export async function receiptPdf(sale,width=58) {
   if(p.reference)lines.push({text:'Referencia: '+p.reference,size:L.small});
   if(p.method!=='cash')lines.push({pair:['','Pago electrónico'],size:L.small});
  }
- lines.push({rule:'dash'},{whatsapp:true},{space:2},{text:`¡Gracias por comprar en ${shortBrand(s.business_name)}!`,bold:true,align:'center'},{space:3},
-  {text:'Comprobante de venta.',align:'center',size:L.small},{text:'No es factura electrónica.',align:'center',size:L.small});
+ lines.push({rule:'dash'},{whatsapp:true},{space:2},{text:'¡Gracias por su compra!',bold:true,align:'center'},{space:3},
+  {text:'Comprobante de venta.',align:'center',size:L.small});
  return build(lines,width,`Venta ${saleNumber(sale)}`);
 }
 export async function closurePdf(closure,width=58) {
  const L=LAYOUT[width]||LAYOUT[80];const s=closure.snapshot;const signed=n=>`${n>0?'+':''}${cop(n)}`;
- const lines=[...businessHeader(s,L),{space:4},{rule:'solid'},{text:'CIERRE DE CAJA',bold:true,align:'center',size:L.small+0.5},{text:`Cierre ${receiptNumber(closure.number)}`,bold:true,size:L.total,align:'center'},{rule:'solid'}];
+ const lines=[...businessHeader(s,L,true),{space:4},{rule:'solid'},{text:'CIERRE DE CAJA',bold:true,align:'center',size:L.small+0.5},{text:`Cierre ${receiptNumber(closure.number)}`,bold:true,size:L.total,align:'center'},{rule:'solid'}];
  if(closure.session_number)lines.push({pair:['Caja',`#${closure.session_number}`],boldRight:true});
  lines.push({pair:['Apertura',stamp(s.opened_at)],boldRight:true},{pair:['Cierre',stamp(s.closed_at)],boldRight:true},{pair:['Abrió',s.opener_name],boldRight:true},{pair:['Cerró',s.admin_name],boldRight:true},{pair:['Ventas',String(s.sale_count)],boldRight:true},
   {rule:'dash'},{pair:['Saldo inicial',cop(s.opening_cents)]},{pair:['Efectivo recibido',cop(s.cash_cents)]},{pair:['Electrónico recibido',cop(s.electronic_cents)]},

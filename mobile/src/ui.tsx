@@ -191,7 +191,7 @@ export function Banner({tone = 'red', title, text, detail, onClose, action, onAc
 /** Un solo contenedor de desplazamiento por vista; el pie fijo ocupa su propio espacio y nunca tapa el contenido. */
 export function Page({children, footer, onRefresh, refreshing = false, testID,scrollRef}: {children: React.ReactNode; footer?: React.ReactNode; onRefresh?: () => void; refreshing?: boolean; testID?: string;scrollRef?:Ref<React.ComponentRef<typeof ScrollView>>}) {
   return <KeyboardAvoidingView style={{flex: 1}} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-    <ScrollView ref={scrollRef} testID={testID} style={{flex: 1}} keyboardShouldPersistTaps="handled" keyboardDismissMode="none" contentContainerStyle={styles.page}
+    <ScrollView ref={scrollRef} testID={testID} style={[{flex: 1},Platform.OS==='web'&&({overflowAnchor:'none'} as object)]} keyboardShouldPersistTaps="handled" keyboardDismissMode="none" contentContainerStyle={styles.page}
       refreshControl={onRefresh ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.accent]} tintColor={colors.accent}/> : undefined}>{children}</ScrollView>
     {footer}
   </KeyboardAvoidingView>;
@@ -344,3 +344,5 @@ export const styles = StyleSheet.create({
   navItem: {flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 6, paddingBottom: 6, gap: 2, minHeight: 60},
   navText: {fontSize: 11, fontWeight: '600', color: colors.muted},
 });
+
+export const displayName=(name:string)=>String(name||'').replace(/ · [a-f0-9]{6}$/i,'');

@@ -1,3 +1,4 @@
+import {displayName} from './ui';
 import React,{useEffect,useState,useRef} from 'react';
 import {Text,View} from 'react-native';
 import * as Crypto from 'expo-crypto';
@@ -43,7 +44,7 @@ export function InventoryScreen({user,products,run,busy,refresh,onBack}:{user:Us
   {view==='stock'&&<>
    {inventory.stock.length===0?<Empty icon="archive" title="Sin existencias en esta ruta" text={admin?'Registra la entrega diaria para asignar productos a la ruta.':'Cuando el administrador registre la entrega diaria, verás aquí tus existencias.'} action={admin?'Registrar entrega':undefined} onAction={admin?()=>setView('delivery'):undefined}/>
    :inventory.stock.map((s:any)=><Card key={s.group_id} style={{gap:8}}>
-    <View style={styles.row}><Text style={[styles.h2,{flex:1}]}>{s.name}</Text><Badge text={s.unit==='kg'?'KG':'UND'} tone="gray"/></View>
+    <View style={styles.row}><Text style={[styles.h2,{flex:1}]}>{displayName(s.name)}</Text><Badge text={s.unit==='kg'?'KG':'UND'} tone="gray"/></View>
     <View style={[styles.row,{alignItems:'flex-end'}]}>
      <View style={{flex:1}}><Text style={styles.small}>Disponible</Text><Text testID="stock-available" style={[styles.metric,s.available_milli<=0&&{color:colors.orange}]}>{quantityLabel(s.available_milli,s.unit)}</Text></View>
      {admin&&<Button title="Ajustar" size="sm" variant="ghost" icon="edit-2" onPress={()=>{setGroup(s.group_id);setQty('');setView('adjust');}}/>}
@@ -60,7 +61,7 @@ export function InventoryScreen({user,products,run,busy,refresh,onBack}:{user:Us
       {d.items.map((i:any)=><InfoRow key={i.product_id} label={i.name} value={quantityLabel(i.quantity_milli,i.unit)}/>)}
      </Card>)}
      {!!inventory.movements.length&&<Card style={{gap:0,paddingVertical:6}}>{inventory.movements.slice(0,moves).map((m:any,n:number)=><View key={m.id} style={[{paddingVertical:8,gap:2},n>0&&{borderTopWidth:1,borderTopColor:colors.line}]}>
-      <View style={styles.row}><Text style={[styles.body,{flex:1,fontWeight:'600',color:colors.ink}]} numberOfLines={1}>{KIND[m.kind]||m.kind} · {m.product_name||m.group_name}</Text><Text style={[styles.money,{color:m.quantity_milli<0?colors.red:colors.greenDark}]}>{m.quantity_milli>0?'+':m.quantity_milli<0?'−':''}{quantityLabel(Math.abs(m.quantity_milli),unitOf(m.group_id))}</Text></View>
+      <View style={styles.row}><Text style={[styles.body,{flex:1,fontWeight:'600',color:colors.ink}]} numberOfLines={1}>{KIND[m.kind]||m.kind} · {m.product_name||displayName(m.group_name)}</Text><Text style={[styles.money,{color:m.quantity_milli<0?colors.red:colors.greenDark}]}>{m.quantity_milli>0?'+':m.quantity_milli<0?'−':''}{quantityLabel(Math.abs(m.quantity_milli),unitOf(m.group_id))}</Text></View>
       <Text style={styles.small}>{date(m.created_at)} · {m.actor_name}{m.note?' · '+m.note:''}</Text>
      </View>)}</Card>}
      {inventory.movements.length>moves&&<Button title={`Ver más movimientos (${inventory.movements.length-moves})`} variant="secondary" onPress={()=>setMoves(moves+MOVES)}/>}
@@ -87,7 +88,7 @@ export function InventoryScreen({user,products,run,busy,refresh,onBack}:{user:Us
   {admin&&view==='adjust'&&<Card>
    <Text style={styles.h2}>Ajuste autorizado</Text>
    <Text style={styles.small}>Corrige el disponible de la ruta cuando el conteo físico no coincide. Escribe la cantidad final que debe quedar.</Text>
-   <SearchSelect label="Inventario" items={inventory.stock.map((s:any)=>({id:s.group_id,name:s.name}))} value={group} onChange={id=>{setGroup(id);setQty('');}}/>
+   <SearchSelect label="Inventario" items={inventory.stock.map((s:any)=>({id:s.group_id,name:displayName(s.name)}))} value={group} onChange={id=>{setGroup(id);setQty('');}}/>
    {selected&&<InfoRow label="Disponible actual" value={quantityLabel(selected.available_milli,selected.unit)} strong/>}
    <Field label="Disponible después del ajuste" value={qty} onChange={setQty} kind="decimal"/>
    {selected&&target!==null&&<InfoRow label="Cambio" value={target===selected.available_milli?'Sin cambio':(target>selected.available_milli?'+':'−')+quantityLabel(Math.abs(target-selected.available_milli),selected.unit)} tone={target<selected.available_milli?'red':'green'}/>}
@@ -98,12 +99,12 @@ export function InventoryScreen({user,products,run,busy,refresh,onBack}:{user:Us
   {admin&&view==='groups'&&<>
    <Text style={styles.small}>Un grupo comparte un solo saldo entre varias presentaciones (por ejemplo, pollo entero y por partes).</Text>
    {groups.map(g=>{const members=products.filter(p=>p.active&&g.products.includes(p.id));return <Card key={g.id} style={{gap:6}}>
-    <View style={styles.row}><Text style={[styles.h2,{flex:1}]}>{g.name}</Text><Badge text={g.unit==='kg'?'KG':'UND'} tone="gray"/><IconButton icon="trash-2" label={'Eliminar grupo '+g.name} onPress={()=>setDeleting(g)}/></View>
+    <View style={styles.row}><Text style={[styles.h2,{flex:1}]}>{displayName(g.name)}</Text><Badge text={g.unit==='kg'?'KG':'UND'} tone="gray"/><IconButton icon="trash-2" label={'Eliminar grupo '+g.name} onPress={()=>setDeleting(g)}/></View>
     {members.length?members.map(p=><View key={p.id} style={styles.row}><Text style={[styles.body,{flex:1}]}>{p.name}</Text><Button title="Retirar del grupo" size="sm" variant="ghost" onPress={()=>run(async()=>{await api('/products/'+p.id+'/group','DELETE');await load();await refresh();})}/></View>):<Text style={styles.small}>Sin productos activos.</Text>}
    </Card>;})}
    <Card>
     <Text style={styles.h2}>Asociar producto a un grupo</Text>
-    <SearchSelect label="Grupo" items={groups} value={memberGroup} onChange={id=>{setMemberGroup(id);setProduct('');}}/>
+    <SearchSelect label="Grupo" items={groups.map(g=>({...g,name:displayName(g.name)}))} value={memberGroup} onChange={id=>{setMemberGroup(id);setProduct('');}}/>
     <SearchSelect label="Producto" items={products.filter(p=>p.active&&!p.group_id&&(!member||p.unit===member.unit))} value={product} onChange={setProduct}/>
     <Text style={styles.hint}>Solo productos activos sin grupo y con la misma unidad del grupo.</Text>
     <Button title="Asociar producto al grupo" disabled={busy||!memberGroup||!product} onPress={()=>run(async()=>{await api('/products/'+product+'/group','PUT',{group_id:memberGroup});setProduct('');await load();await refresh();})}/>

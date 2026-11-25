@@ -24,8 +24,7 @@ export function Receipt({sale, width}: {sale: Sale; width: 58 | 80}) {
   const Pair = ({left, right, bold, big}: {left: string; right: string; bold?: boolean; big?: boolean}) =>
     <View style={r.pair}><Text style={{fontSize: big ? size + 4 : size, fontWeight: bold ? '800' : '400', color: '#111'}}>{left}</Text><Text style={{flexShrink: 1, textAlign: 'right', fontSize: big ? size + 4 : size, fontWeight: '700', color: '#111', fontVariant: ['tabular-nums']}}>{right}</Text></View>;
   return <View testID="receipt-preview" accessibilityLabel={`Comprobante venta ${saleNumber(sale)}`} style={[r.paper, {width: paper}]}>
-    <Image source={PRINT_LOGO} resizeMode="contain" accessibilityLabel="Logo DOK POLLO MC" style={{width: paper * 0.48, height: paper * 0.48, alignSelf: 'center'}}/>
-    <T bold center>{brand}</T>
+    <Image source={PRINT_LOGO} resizeMode="contain" accessibilityLabel="Logo DOK POLLO MC" style={{width: paper * 0.88, height: paper * 0.88, alignSelf: 'center'}}/>
     {!!s.business_nit && <T center small>NIT {s.business_nit}</T>}
     {!!place && <T center small>{place}</T>}
     {!!s.business_phone && !s.business_whatsapp && <T center small>Tel. {s.business_phone}</T>}
@@ -36,7 +35,6 @@ export function Receipt({sale, width}: {sale: Sale; width: 58 | 80}) {
     <Pair left="Fecha" right={shortDate(sale.created_at)}/>
     <Pair left="Hora" right={time(sale.created_at)}/>
     <Pair left="Vendedor" right={s.seller_name}/>
-    {!!s.route_name&&<Pair left="Ruta" right={s.route_name}/>}
     {!!sale.session_number && <Pair left="Caja" right={`#${sale.session_number}`}/>}
     <View style={{height: 4}}/>
     <Pair left="Cliente" right={s.customer_name}/>
@@ -63,10 +61,9 @@ export function Receipt({sale, width}: {sale: Sale; width: 58 | 80}) {
     </View>)}
     <View style={r.dash}/>
     <View style={{flexDirection:'row',alignItems:'center',justifyContent:'center',gap:6,marginVertical:4}}><FontAwesome name="whatsapp" size={20} color="#111" accessibilityLabel="WhatsApp"/><T bold>{WHATSAPP_NUMBER}</T></View>
-    <T bold center>¡Gracias por comprar en {brand}!</T>
+    <T bold center>¡Gracias por su compra!</T>
     <View style={{height: 4}}/>
     <T center small>Comprobante de venta.</T>
-    <T center small>No es factura electrónica.</T>
   </View>;
 }
 const r = StyleSheet.create({

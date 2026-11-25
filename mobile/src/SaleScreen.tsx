@@ -17,9 +17,7 @@ const UNIT_PRESETS = ['1', '2', '3', '6', '12', '24'];
 const PAGE = 30;
 
 export function SaleScreen({route,userId, active, session, products:rawProducts, customers, platforms, paperWidth, refresh, run, busy, onViewSale, onOpenCash, onFlowChange}: Props) {
-  const keyboard=useKeyboardVisible(),scroll=useRef<React.ComponentRef<typeof ScrollView>>(null),searchY=useRef(0);
-  const scrollSearch=()=>setTimeout(()=>scroll.current?.scrollTo({y:Math.max(0,searchY.current-8),animated:true}),100);
-  useEffect(()=>{if(keyboard&&draft)scrollSearch();},[keyboard]);
+  const keyboard=useKeyboardVisible(),scroll=useRef<React.ComponentRef<typeof ScrollView>>(null);
   const sync=useSyncStatus();
   const offlineReady=!!sync?.offline_ready;
   const [cart, setCart] = useState<CartLine[]>([]), [query, setQuery] = useState(''), [limit, setLimit] = useState(PAGE), [view, setView] = useState<SaleView>('catalog');
@@ -40,7 +38,7 @@ export function SaleScreen({route,userId, active, session, products:rawProducts,
   useEffect(()=>{const subscription=onBarcode(code=>{if(!active)return;if(editing||pickCustomer||view==='pay'||done||pending){setScanMessage('Confirma o cierra el formulario actual antes de escanear el siguiente producto.');return;}const p=products.find(p=>p.active&&p.codes?.some(c=>c.code.toLowerCase()===code.trim().toLowerCase()));if(p){setScanMessage('');setView('catalog');openQuantity(p);}else{setQuery(code);setScanMessage(`No hay un producto con el código ${code}.`);}});return ()=>subscription?.remove();},[active,editing,pickCustomer,view,done,pending,products,cart,agent,customer]);
   const searchInput=useRef<React.ComponentRef<typeof TextInput>>(null);
   const [credit,setCredit]=useState(false),[clearCart,setClearCart]=useState(false);
-  useEffect(()=>{if(active&&view==='catalog'&&!editing&&!pickCustomer&&!done){const timer=setTimeout(()=>searchInput.current?.focus(),350);return ()=>clearTimeout(timer);}},[active,view,editing,pickCustomer,done]);
+  useEffect(()=>{if(active&&view==='catalog'&&!editing&&!pickCustomer&&!done){const timer=setTimeout(()=>Platform.OS==='web'?(searchInput.current as unknown as HTMLInputElement)?.focus({preventScroll:true}):searchInput.current?.focus(),350);return ()=>clearTimeout(timer);}},[active,view,editing,pickCustomer,done]);
   useEffect(() => { run(async () => { setPending(await readPending(userId)); setReady(true); }); }, [userId]);
   // Al actualizar el catálogo, el carrito toma precios y existencias vigentes (la API rechaza precios desactualizados).
   useEffect(() => { setCart(lines => lines.map(l => ({...l, product: products.find(p => p.id === l.product.id) || l.product}))); }, [products]);
@@ -258,8 +256,8 @@ export function SaleScreen({route,userId, active, session, products:rawProducts,
         </>}
         <Segmented items={[{id: 'catalog', name: 'Productos'}, {id: 'cart', name: `En la venta${cart.length ? ` (${cart.length})` : ''}`}]} value={view} onChange={v => setView(v as SaleView)} testID="sale-tabs"/>
         {view === 'catalog' ? <>
-          <View onLayout={e=>{searchY.current=e.nativeEvent.layout.y;}} style={[styles.row, {gap: 8}]}>
-            <View style={{flex: 1}}><SearchBar onFocus={scrollSearch} inputRef={searchInput} value={query} onChange={t=>{setQuery(t);setLimit(PAGE);}} onSubmit={scan} placeholder="Buscar producto o leer código" testID="product-search"/></View>
+          <View style={[styles.row, {gap: 8}]}>
+            <View style={{flex: 1}}><SearchBar inputRef={searchInput} value={query} onChange={t=>{setQuery(t);setLimit(PAGE);}} onSubmit={scan} placeholder="Buscar producto o leer código" testID="product-search"/></View>
             <IconButton icon="refresh-cw" label="Actualizar precios y existencias" onPress={() => run(refresh, 'Precios actualizados')} disabled={busy}/>
           </View>
           {visible.length === 0 && (cart.length===0||!!query.trim()) && <Empty icon="search" title={!query?'Busca un producto':products.length?'Sin resultados':'Aún no hay productos'} text={!query?'Escribe parte del nombre o lee el código de barras.':`No encontramos “${query}”. Revisa la escritura o prueba con otra palabra.`}/>}

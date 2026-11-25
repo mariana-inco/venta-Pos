@@ -138,8 +138,8 @@ test('Autorización de sincronización: catálogo emitido, permiso de dispositiv
  }finally{if(server)await new Promise(r=>server.close(r));l.db.close();other.db.close();f.db.close();}
 });
 test('Ticket local estable y seguro para HTML/ESC-POS; 58/80 mm y nombre largo',()=>{
- const sale={id:randomUUID(),number:1,created_at:'2026-10-28T15:00:00.000Z',total_cents:3600000,snapshot:{business_name:'DANNY\'S <script>\x1b@',seller_name:'Ana',customer_name:'Ñandú',customer_city:'Bogotá',ticket_number:`${randomUUID()}/1`},items:[{name:'Queso campesino de nombre muy largo',quantity_milli:1500,price_cents:2400000,subtotal_cents:3600000,unit:'kg'}],payments:[{method:'cash'}]};
- for(const width of [58,80]){const lines=ticketLines(sale,'sale',width);assert.ok(lines.every(l=>l.length<=(width===58?32:48)));assert.ok(!lines.join('').includes('\x1b'));const html=ticketHtml(sale,'sale',width);assert.ok(html.includes('&lt;script&gt;'));assert.ok(!html.includes('<script>'));assert.ok(lines.join('\n').includes('36.000'));}
+ const sale={id:randomUUID(),number:1,created_at:'2026-10-28T15:00:00.000Z',total_cents:3600000,snapshot:{business_name:'DANNY\'S <script>\x1b@',seller_name:'Ana',customer_name:'Ñandú',customer_city:'Bogotá',ticket_number:`${randomUUID()}/1`},items:[{name:'<script> Queso campesino de nombre muy largo',quantity_milli:1500,price_cents:2400000,subtotal_cents:3600000,unit:'kg'}],payments:[{method:'cash'}]};
+ for(const width of [58,80]){const lines=ticketLines(sale,'sale',width);assert.ok(lines.every(l=>l.length<=(width===58?32:48)));assert.ok(!lines.join('').includes('\x1b'));const html=ticketHtml(sale,'sale',width);assert.ok(html.toLowerCase().includes('&lt;script&gt;'));assert.ok(!html.includes('<script>'));assert.ok(lines.join('\n').includes('36.000'));}
 });
 
 test('Consecutivo offline: solo las ventas consumen números, persiste, no se repite y se bloquea al agotar reserva',async()=>{
