@@ -7,7 +7,7 @@ import {cop, quantityLabel, receiptNumber, saleNumber, shortDate, time} from './
 import type {Sale} from './types';
 
 // Logo de Dok Pollo MC; el controlador térmico lo convierte a blanco y negro.
-const PRINT_LOGO = require('../assets/brand/dok-pollo-mc.png');
+const PRINT_LOGO = require('../assets/brand/receipt-logo.png');
 
 /**
  * Vista previa del ticket térmico. Usa solo los datos guardados de la venta (instantánea, precios y subtotales
@@ -24,7 +24,7 @@ export function Receipt({sale, width}: {sale: Sale; width: 58 | 80}) {
   const Pair = ({left, right, bold, big}: {left: string; right: string; bold?: boolean; big?: boolean}) =>
     <View style={r.pair}><Text style={{fontSize: big ? size + 4 : size, fontWeight: bold ? '800' : '400', color: '#111'}}>{left}</Text><Text style={{flexShrink: 1, textAlign: 'right', fontSize: big ? size + 4 : size, fontWeight: '700', color: '#111', fontVariant: ['tabular-nums']}}>{right}</Text></View>;
   return <View testID="receipt-preview" accessibilityLabel={`Comprobante venta ${saleNumber(sale)}`} style={[r.paper, {width: paper}]}>
-    <Image source={PRINT_LOGO} resizeMode="contain" accessibilityLabel="Logo DOK POLLO MC" style={{width: paper * 0.88, height: paper * 0.88, alignSelf: 'center'}}/>
+    <Image source={PRINT_LOGO} resizeMode="contain" accessibilityLabel="Logo DOK POLLO MC" style={{width: paper * 0.88, height: paper * 0.88 * 332/1452, alignSelf: 'center'}}/>
     {!!s.business_nit && <T center small>NIT {s.business_nit}</T>}
     {!!place && <T center small>{place}</T>}
     {!!s.business_phone && !s.business_whatsapp && <T center small>Tel. {s.business_phone}</T>}

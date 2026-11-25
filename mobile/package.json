@@ -1,6 +1,6 @@
 {
   "name": "@venta-pos/mobile",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "private": true,
   "main": "index.ts",
   "scripts": {
