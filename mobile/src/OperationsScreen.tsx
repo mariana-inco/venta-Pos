@@ -100,16 +100,16 @@ export function OperationsScreen({user,customers,session,run,busy,refresh,onBack
    <Card>
     <Range from={histFrom} to={histTo} setFrom={setHistFrom} setTo={setHistTo}/>
     <Segmented items={[{id:'',name:'Todos'},{id:'cash',name:'Efectivo'},{id:'electronic',name:'Electrónico'}]} value={histMethod} onChange={setHistMethod}/>
-    <Button title="Consultar recaudos" icon="search" disabled={busy} onPress={()=>run(async()=>{const p=new URLSearchParams(query(histFrom,histTo));if(histMethod)p.set('method',histMethod);setHistory(await api('/collections?'+p));})}/>
+    <Button title="Consultar recaudos" icon="search" disabled={busy} onPress={()=>run(async()=>{const p=new URLSearchParams(query(histFrom,histTo));p.set('include_initial','1');if(histMethod)p.set('method',histMethod);setHistory(await api('/collections?'+p));})}/>
    </Card>
    {history&&(history.length?<>
     <Text style={styles.small}>{history.length} {history.length===1?'recaudo':'recaudos'} · {cop(history.filter(c=>!c.reversed_at).reduce((n,c)=>n+c.amount_cents,0))} vigentes</Text>
     {history.map(c=><Card key={c.id} style={{gap:4}}>
      <View style={styles.row}><Text style={[styles.h2,{fontSize:16,flex:1}]}>{c.customer_name}</Text><Text style={[styles.money,{fontSize:16},c.reversed_at&&{textDecorationLine:'line-through',color:colors.muted}]}>{cop(c.amount_cents)}</Text></View>
      {c.reversed_at&&<Badge text="Revertido" tone="red"/>}
-     <Text style={styles.small}>{date(c.created_at)} · {methodName(c.method)}</Text>
+     <Text style={styles.small}>{date(c.created_at)} · {c.platform_name||methodName(c.method)}{c.reference?' · Ref: '+c.reference:''}</Text>
      <Text style={styles.small}>{c.seller_name} · {c.route_name}{c.note?' · '+c.note:''}</Text>
-     {admin&&!c.reversed_at&&<Button title="Revertir abono" size="sm" variant="ghost" style={{alignSelf:'flex-start'}} onPress={()=>{setAction({path:'/collections/'+c.id+'/reverse',title:'Revertir abono',text:`El abono de ${cop(c.amount_cents)} de ${c.customer_name} vuelve a sumarse a su deuda. Esta acción queda registrada.`});setReason('');}}/>}
+     {admin&&!c.reversed_at&&c.kind!=='initial_payment'&&<Button title="Revertir abono" size="sm" variant="ghost" style={{alignSelf:'flex-start'}} onPress={()=>{setAction({path:'/collections/'+c.id+'/reverse',title:'Revertir abono',text:`El abono de ${cop(c.amount_cents)} de ${c.customer_name} vuelve a sumarse a su deuda. Esta acción queda registrada.`});setReason('');}}/>}
     </Card>)}
    </>:<Empty icon="search" title="Sin recaudos" text="No hay abonos con estos filtros."/>)}
   </>}

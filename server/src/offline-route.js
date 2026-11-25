@@ -34,7 +34,7 @@ export function ingestRouteSale(db,user,deviceId,event){
  if(c.opening_id&&currentOpening(db,r.route_id)?.id!==c.opening_id)fail(409,'La apertura de la reserva no está activa.');
  if(c.version!==d.catalog_version||dayOf(event.created_at)!==r.day||Date.parse(event.created_at)<Date.parse(r.created_at)-300000||Date.parse(event.created_at)>Date.now()+300000)fail(409,'La fecha o catálogo de la venta no corresponde a su reserva.');
  if(input.session_id!==r.session_id||routeFor(db,user)?.id!==r.route_id||input.request_key!==event.id||input.draft_id!==event.id)fail(403,'La venta no corresponde a esta caja, ruta o terminal.');
- if(!['cash','credit'].includes(input.method)||(input.initial_payment&&Number(input.initial_payment)>0&&input.initial_method!=='cash')||input.payments?.length)fail(400,'Los pagos electrónicos requieren conexión para verificar sus referencias.');
+ if(!['cash','credit'].includes(input.method)||(!input.payments&&input.initial_payment&&Number(input.initial_payment)>0&&input.initial_method!=='cash')||(input.payments&&(input.method!=='credit'||input.payments.some(p=>p.method!=='cash'))))fail(400,'Los pagos electrónicos requieren conexión para verificar sus referencias.');
  const customer=c.customers.find(x=>x.id===input.customer_id&&x.active),agent=c.agents.find(x=>x.id===input.agent_id);
  if(!customer||!agent)fail(403,'Cliente o vendedor no autorizado en el catálogo reservado.');
  const prices={};for(const p of c.products.filter(p=>p.active))prices[p.id]={price_cents:customer.customer_type==='wholesale'?p.wholesale_price_cents:p.price_cents,unit:p.unit};

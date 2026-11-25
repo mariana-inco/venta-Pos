@@ -18,6 +18,7 @@ export function createExpense(db,user,input){return transaction(db,()=>{
  const amount=money(input.amount);if(amount<=0)fail(400,'El gasto debe ser mayor que cero.');
  const t=totals(db,session.id),available=session.opening_cents+t.cash_cents-t.expense_cents;
  if(amount>available)fail(409,'El gasto supera el efectivo disponible en la caja.');
+ if(!input.evidence_id)fail(400,'Adjunta y carga la fotografía obligatoria del gasto antes de guardarlo.');
  const key=id(),at=now();
  db.prepare('INSERT INTO cash_expenses VALUES (?,?,?,?,?,?,?,?,?)').run(key,session.id,user.id,routeFor(db,user)?.id||null,input.description,amount,at,input.request_key,hash);
  linkEvidence(db,user,key,input.evidence_id,session.id);

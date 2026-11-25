@@ -22,10 +22,17 @@ export function salePayments(db,input,total){
  if(input.method==='mixed'){
   if(!input.payments?.length)fail(400,'Agrega las líneas de pago.');lines=input.payments.map(p=>paymentLine(db,p));
  }else if(credit){
-  const initial=money(input.initial_payment||'0');if(initial>total)fail(400,'El abono inicial supera el total de la factura.');
-  if(initial>0)lines=[paymentLine(db,{method:input.initial_method||(input.method==='electronic'?'electronic':'cash'),platform_id:input.initial_platform_id||input.platform_id,reference:input.reference,amount:input.initial_payment})];
+  if(input.payments!==undefined){
+   if(!input.payments.length)fail(400,'Agrega al menos un medio para el abono inicial.');
+   lines=input.payments.map(p=>paymentLine(db,p));
+   if(input.initial_payment!==undefined&&money(input.initial_payment)!==lines.reduce((n,p)=>n+p.amount_cents,0))fail(400,'El abono inicial no coincide con sus medios de pago.');
+  }else{
+   const initial=money(input.initial_payment||'0');
+   if(initial>0)lines=[paymentLine(db,{method:input.initial_method||(input.method==='electronic'?'electronic':'cash'),platform_id:input.initial_platform_id||input.platform_id,reference:input.reference,amount:input.initial_payment})];
+  }
  }else lines=[paymentLine(db,{method:input.method,platform_id:input.platform_id,reference:input.reference,amount:String(total/100)})];
  const paid=lines.reduce((n,p)=>n+p.amount_cents,0);if(!Number.isSafeInteger(paid))fail(400,'Importe fuera de rango.');
+ if(credit&&paid>total)fail(400,'El abono inicial supera el total de la factura.');
  if(!credit&&paid!==total)fail(400,paid<total?'Falta dinero para completar la factura.':'El pago supera el total de la factura.');
  const seen=new Set();for(const p of lines){if(p.method==='electronic'){const key=p.platform_id+'/'+p.key;if(seen.has(key))fail(409,'Referencia de pago repetida dentro de la factura.');seen.add(key);}}
  return {credit,paid,lines};

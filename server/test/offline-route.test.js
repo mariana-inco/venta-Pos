@@ -86,3 +86,16 @@ test('Ruta offline: permisos, manipulación, límites de jornada y reservas conc
  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM customers').get().n,3);assert.equal(f.db.prepare('SELECT COUNT(*) n FROM products').get().n,2);
  }finally{await f.close();t.mock.timers.reset();}
 });
+
+test('Crédito offline con varias líneas en efectivo sincroniza el abono una sola vez',async()=>{
+ const f=await fixture();try{await f.prepare();
+ assert.throws(()=>f.sell(f.normal,'1','credit',{payments:[{method:'cash',amount:'0'}]}),/mayor a cero/);
+ assert.throws(()=>f.sell(f.normal,'1','credit',{payments:[{method:'cash',amount:'12001'}]}),/supera/);
+ assert.throws(()=>f.sell(f.normal,'1','credit',{payments:[{method:'electronic',platform_id:'bold',amount:'10',reference:'X'}]}),/conexión/);
+ const x=f.sell(f.normal,'1','credit',{payments:[{method:'cash',amount:'2000'},{method:'cash',amount:'3000'}],initial_payment:'5000'});
+ assert.equal(x.sale.balance_cents,700000);assert.equal(x.sale.payments.length,2);f.reopen();assert.equal(f.store.pending().length,1);
+ const events=f.store.pending().map(e=>e.event);
+ const first=await f.request('/sync/events',{events});const again=await f.request('/sync/events',{events});assert.equal(first.accepted.length,1);assert.equal(again.accepted.length,1);
+ assert.equal(f.db.prepare('SELECT COUNT(*) n FROM sales').get().n,1);assert.equal(f.db.prepare('SELECT SUM(amount_cents) n FROM payments WHERE sale_id=?').get(x.sale.id).n,500000);assert.equal(f.db.prepare('SELECT COUNT(*) n FROM payments WHERE sale_id=?').get(x.sale.id).n,2);
+ }finally{await f.close();}
+});

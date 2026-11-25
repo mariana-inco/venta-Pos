@@ -1,6 +1,6 @@
 import express from 'express';
 import sharp from 'sharp';
-import {mkdirSync,mkdtempSync,writeFileSync,unlinkSync} from 'node:fs';
+import {mkdirSync,mkdtempSync,writeFileSync,unlinkSync,statSync} from 'node:fs';
 import {dirname,join,resolve} from 'node:path';
 import {tmpdir} from 'node:os';
 import {z} from 'zod';
@@ -9,7 +9,7 @@ import {digest} from './auth.js';
 import {fail,sessionFor} from './service.js';
 const roots=new WeakMap();
 function root(db){if(!roots.has(db)){const path=db.prepare('PRAGMA database_list').get().file;roots.set(db,process.env.EXPENSE_FILES_DIR?resolve(process.env.EXPENSE_FILES_DIR):path?join(dirname(path),'expense-evidence'):mkdtempSync(join(tmpdir(),'pos-evidence-')));}const value=roots.get(db);mkdirSync(value,{recursive:true,mode:0o700});return value;}
-export function linkEvidence(db,user,expenseId,evidenceId,sessionId){if(!evidenceId)return;const e=db.prepare('SELECT * FROM expense_evidence WHERE id=?').get(evidenceId);if(!e||e.actor_id!==user.id||e.session_id!==sessionId)fail(403,'La evidencia no pertenece a esta caja y usuario.');if(db.prepare('SELECT 1 FROM expense_evidence_links WHERE evidence_id=?').get(e.id))fail(409,'Esta evidencia ya está asociada a otro gasto.');db.prepare('INSERT INTO expense_evidence_links VALUES(?,?)').run(expenseId,e.id);}
+export function linkEvidence(db,user,expenseId,evidenceId,sessionId){if(!evidenceId)fail(400,'La fotografía del gasto es obligatoria.');const e=db.prepare('SELECT * FROM expense_evidence WHERE id=?').get(evidenceId);if(!e||e.actor_id!==user.id||e.session_id!==sessionId)fail(403,'La evidencia no pertenece a esta caja y usuario.');try{if(!statSync(join(root(db),e.storage_key)).isFile()||!statSync(join(root(db),e.thumbnail_key)).isFile())throw new Error();}catch{fail(409,'La fotografía no está disponible. Vuelve a cargarla antes de guardar el gasto.');}if(db.prepare('SELECT 1 FROM expense_evidence_links WHERE evidence_id=?').get(e.id))fail(409,'Esta evidencia ya está asociada a otro gasto.');db.prepare('INSERT INTO expense_evidence_links VALUES(?,?)').run(expenseId,e.id);}
 export function mountEvidence(app,db){
  app.post('/api/expenses/evidence',express.raw({type:['image/jpeg','image/png','image/webp'],limit:'5mb',inflate:false}),async(req,res)=>{
  const input=z.object({session_id:z.string().uuid(),request_key:z.string().uuid()}).parse(req.query),s=sessionFor(db,req.user,input.session_id);if(s.opened_by!==req.user.id||s.state!=='open')fail(403,'Adjunta evidencia a tu propia caja abierta.');

@@ -37,7 +37,7 @@ export function routeRequest(s,user,path,method,body){
   if(day(s.clock())!==c.reservation_day)fail('La reserva es de otra jornada. Sincroniza antes de seguir vendiendo.');
   const draft=s.get('route-draft',body.draft_id);if(!draft||body.request_key!==draft.id||body.agent_id!==draft.agent_id||body.customer_id!==draft.customer_id||body.session_id!==c.session.id)fail('No se puede cambiar cliente, vendedor, ruta o caja de esta venta.');
   if(body.prior_debt_payment)fail('Los abonos al crédito anterior requieren conexión.');
-  if(!['cash','credit'].includes(body.method)||(body.method==='cash'&&body.credit)||(body.initial_payment&&decimal(body.initial_payment,2)>0&&body.initial_method!=='cash')||body.payments?.length)fail('Finaliza el modo sin internet para verificar pagos electrónicos con conexión.');
+  if(!['cash','credit'].includes(body.method)||(body.method==='cash'&&body.credit)||(!body.payments&&body.initial_payment&&decimal(body.initial_payment,2)>0&&body.initial_method!=='cash')||(body.payments&&(body.method!=='credit'||!Array.isArray(body.payments)||!body.payments.length||body.payments.length>20||body.payments.some(p=>p.method!=='cash'))))fail('Finaliza el modo sin internet para verificar pagos electrónicos con conexión.');
   if(!Array.isArray(body.items)||!body.items.length||body.items.length>100)fail('Agrega entre 1 y 100 productos.');
   const products=routeProducts(s),used=new Map(),seen=new Set();
   const items=body.items.map(i=>{
@@ -50,7 +50,11 @@ export function routeRequest(s,user,path,method,body){
    return {id:s.uuid(),product_id:p.id,name:p.name,unit:p.unit,price_cents:price,quantity_milli:qty,subtotal_cents:subtotal};
   });
   const total=items.reduce((n,i)=>n+i.subtotal_cents,0);if(!Number.isSafeInteger(total)||total>100_000_000_000)fail('Total fuera de rango.');
-  const credit=body.method==='credit',paid=credit?decimal(body.initial_payment||'0',2):total;if(paid>total)fail('El abono supera el total.');
+  const credit=body.method==='credit';
+  const payments=body.payments?.map(p=>{const amount=decimal(p.amount,2);if(amount<=0)fail('Cada pago debe ser mayor a cero.');return {method:'cash',platform_id:null,platform_name:null,amount_cents:amount};});
+  const paid=credit?(payments?payments.reduce((n,p)=>n+p.amount_cents,0):decimal(body.initial_payment||'0',2)):total;
+  if(!Number.isSafeInteger(paid)||paid>total)fail('El abono supera el total.');
+  if(payments&&body.initial_payment!==undefined&&decimal(body.initial_payment,2)!==paid)fail('El abono inicial no coincide con sus medios de pago.');
   const received=body.cash_received===undefined?null:decimal(body.cash_received,2);if(received!==null&&(credit||received<total))fail('El efectivo recibido no cubre la venta.');
   const usedNumber=s.meta('receipt_sequence')||0,range=c.receipt_ranges.find(r=>r.end_number>usedNumber);if(!range)fail('Conecta y finaliza el modo sin internet para reservar más consecutivos.');
   const n=Math.max(usedNumber+1,range.start_number);s.setMeta('receipt_sequence',n);
@@ -58,7 +62,7 @@ export function routeRequest(s,user,path,method,body){
   const customer=c.customers.find(x=>x.id===body.customer_id),agent=c.agents.find(x=>x.id===body.agent_id);
   const previousDebt=s.all('sale').filter(x=>x.reservation_id===c.reservation_id&&x.customer_id===customer.id).reduce((n,x)=>n+(x.balance_cents||0),0);
   const snapshot={...c.settings,credit_breakdown_version:1,prior_credit_cents:(customer.balance_cents||0)+previousDebt,prior_credit_payment_cents:0,current_purchase_cents:total,current_paid_cents:paid,new_credit_cents:total-paid,business_whatsapp:'3225268837',receipt_number:`P-${String(n).padStart(2,'0')}`,customer_name:customer.name,customer_city:customer.city,customer_type:draft.customer_type,seller_name:agent.name,user_name:user.name,route_id:c.route.id,route_name:c.route.name,agent_id:agent.id,credit,initial_paid_cents:paid,initial_balance_cents:total-paid,customer_balance_cents:(customer.balance_cents||0)+previousDebt+total-paid,cash_received_cents:received,cash_change_cents:received===null?null:received-total};
-  return s.put('sale',{id:event.id,reservation_id:c.reservation_id,number:event.sequence,session_id:c.session.id,session_number:c.session.number,seller_id:user.id,customer_id:customer.id,created_at:event.created_at,total_cents:total,paid_cents:paid,balance_cents:total-paid,state:paid===total?'PAGADA':paid?'PAGO PARCIAL':'PENDIENTE',items,payments:paid?[{method:'cash',platform_id:null,platform_name:null,amount_cents:paid}]:[],method:body.method,snapshot,sync_status:'pending',local_request:request});
+  return s.put('sale',{id:event.id,reservation_id:c.reservation_id,number:event.sequence,session_id:c.session.id,session_number:c.session.number,seller_id:user.id,customer_id:customer.id,created_at:event.created_at,total_cents:total,paid_cents:paid,balance_cents:total-paid,state:paid===total?'PAGADA':paid?'PAGO PARCIAL':'PENDIENTE',items,payments:payments||(paid?[{method:'cash',platform_id:null,platform_name:null,amount_cents:paid}]:[]),method:body.method,snapshot,sync_status:'pending',local_request:request});
  });
  return undefined;
 }
