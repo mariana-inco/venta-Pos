@@ -42,3 +42,9 @@ Respaldo de ejecución: `/data/backups/before-p35-payment-split-2026-11-25T00-31
 - Web real contra API de prueba: flujo completo a 320/390/768/1280 px; valida no guardar gasto sin foto, carga/reintento, crédito dividido y Varios exacto.
 - TypeScript y compilación Android ARM32/ARM64.
 - Pendiente verificación física de cámara, instalación e impresión en Neotek; no hubo terminal conectada durante estas pruebas.
+
+APK: `output/dok-pollo-mc-1.4.1-neotek.apk`. SHA256: `244f72e53640c36c8cad19201af48363f624265fe5f1044756586e2ea8baec9e`. Firma SHA256: `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c` (conservada). `com.ventapos.mobile`, minSdk 24, targetSdk 36, ARM32/ARM64.
+
+Backend desplegado desde `73e29f19e421354d46494344dd5e48a60d6701a3` en Coolify, despliegue `0ovcpa1u63wzoi6egh1qi9pm`, finalizado 24/11/2026 19:35:16 Colombia. Contenedor `0sxtn0nojcnijnl1dxn7rmev-20261125T003432`, saludable; `/health` 200.
+
+Verificación autenticada posterior: P-35 conserva total/abono/saldo/fecha, muestra las dos líneas en detalle y recaudos; PDF 58/80 devuelven 200; gasto sin evidencia rechazado con 400 sin insertar. Ejemplo multimétodo calculado sin guardar: compra $2.000.000, abono $600.000, saldo $1.400.000. Conteos antes/después de verificar idénticos: 30 ventas, 21 pagos, 9 gastos, 1 abono posterior, 33 clientes, 20 productos, 3 cajas; integridad `ok` y sin errores FK. No se insertaron ventas, pagos ni gastos de prueba en producción. La sesión temporal de diagnóstico se retiró al terminar.
