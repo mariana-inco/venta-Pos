@@ -3,7 +3,7 @@ import {receiptPdf,closurePdf} from './pdf.js';
 export async function storedPdf(db,kind,record,width){
  const column=kind==='sale'?'sale_id':'closure_id';
  const existing=db.prepare(`SELECT content FROM documents WHERE ${column}=? AND width=?`).get(record.id,width);
- if(existing){const bytes=Buffer.from(existing.content);if(kind==='sale'&&!bytes.includes(Buffer.from('(dok-wordmark-v1)')))return receiptPdf(record,width);return bytes;}
+ if(existing){const bytes=Buffer.from(existing.content);if(!bytes.includes(Buffer.from('(dok-truck-v1)')))return kind==='sale'?receiptPdf(record,width):closurePdf(record,width);return bytes;}
  const content=await(kind==='sale'?receiptPdf(record,width):closurePdf(record,width));
  db.prepare('INSERT OR IGNORE INTO documents VALUES (?,?,?,?,?,?)').run(id(),kind==='sale'?record.id:null,kind==='closure'?record.id:null,width,content,now());
  return Buffer.from(db.prepare(`SELECT content FROM documents WHERE ${column}=? AND width=?`).get(record.id,width).content);

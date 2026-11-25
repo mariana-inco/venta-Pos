@@ -5,9 +5,9 @@ import { fileURLToPath } from 'node:url';
 import { cop,difference } from './money.js';
 const mm=72/25.4;
 // Logo suministrado por el negocio, proporción cuadrada.
-const LOGO=fileURLToPath(new URL('../assets/dok-pollo-mc.png',import.meta.url));const LOGO_RATIO=1;
+const LOGO=fileURLToPath(new URL('../assets/dok-pollo-mc.png',import.meta.url));const LOGO_RATIO=1152/1365;
 const RECEIPT_LOGO=fileURLToPath(new URL('../assets/receipt-logo.png',import.meta.url));
-const RECEIPT_RATIO=332/1452;
+const RECEIPT_RATIO=1152/1365;
 // Papel físico → área imprimible habitual (58 → 48 mm, 80 → 72 mm). El contenido nunca sale de esa franja.
 const LAYOUT={58:{side:5*mm,body:8,small:7,title:10,total:13,logo:44*mm},80:{side:4*mm,body:9,small:7.5,title:11,total:15,logo:58*mm}};
 const TOP=4*mm,BOTTOM=8*mm,GAP=6;
@@ -46,7 +46,7 @@ async function build(lines,widthMm,title) {
  const height=Math.max(120,measured.reduce((sum,line)=>sum+line.height,TOP+BOTTOM));measure.end();
  // Límite PDF 14400 pt; tickets extensos se dividen automáticamente en hojas del mismo ancho.
  const pageHeight=Math.min(height,14000);
- const doc=new PDFDocument({size:[width,pageHeight],margins:{top:TOP,bottom:0,left:L.side,right:L.side},info:{Title:title,Author:'Dok Pollo MC',ReceiptLayout:'dok-wordmark-v1'}});
+ const doc=new PDFDocument({size:[width,pageHeight],margins:{top:TOP,bottom:0,left:L.side,right:L.side},info:{Title:title,Author:'Dok Pollo MC',ReceiptLayout:'dok-truck-v1'}});
  const chunks=[];const done=new Promise((resolve,reject)=>{doc.on('data',chunk=>chunks.push(chunk));doc.on('end',()=>resolve(Buffer.concat(chunks)));doc.on('error',reject);});
  let y=TOP;const x=L.side;
  for(const line of measured) {
